@@ -1,0 +1,26 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cad-uv-map"
+version = "0.1.0"
+description = "OpenCascade-backed CAD surface mapping for high-to-low texture baking"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "ruff>=0.5",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.24"
+wheel.packages = ["python/cad_uv_map"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
