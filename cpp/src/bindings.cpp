@@ -15,6 +15,9 @@ PYBIND11_MODULE(_native, m) {
         .def_readonly("v_min", &cad_uv_map::FaceInfo::v_min)
         .def_readonly("v_max", &cad_uv_map::FaceInfo::v_max);
 
+    /*
+     * summary functions
+     */
     m.def("describe_brep_faces", &cad_uv_map::describe_brep_faces,
           py::arg("brep_path"),
           "Read a BREP file and return basic face UV bounds.");

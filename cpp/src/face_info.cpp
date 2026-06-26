@@ -1,4 +1,4 @@
-#include "cad_uv_map/mapping.hpp"
+#include "cad_uv_map/face_info.hpp"
 #include "cad_uv_map/occt_io.hpp"
 
 #include <BRepAdaptor_Surface.hxx>
