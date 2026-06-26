@@ -18,4 +18,21 @@ PYBIND11_MODULE(_native, m) {
     m.def("describe_brep_faces", &cad_uv_map::describe_brep_faces,
           py::arg("brep_path"),
           "Read a BREP file and return basic face UV bounds.");
+    m.def("describe_brep_bytes",
+          [](py::bytes brep_data) {
+              return cad_uv_map::describe_brep_bytes(static_cast<std::string>(brep_data));
+          },
+          py::arg("brep_data"),
+          "Read BREP bytes and return basic face UV bounds.");
+
+    m.def("debug_print_brep_faces", &cad_uv_map::debug_print_brep_faces,
+          py::arg("brep_path"),
+          "Read a BREP file and print face debug information to stdout.");
+    m.def("debug_print_brep_bytes",
+          [](py::bytes brep_data, const std::string& label) {
+              cad_uv_map::debug_print_brep_bytes(static_cast<std::string>(brep_data), label);
+          },
+          py::arg("brep_data"),
+          py::arg("label") = "BREP bytes",
+          "Read BREP bytes and print face debug information to stdout.");
 }

@@ -5,6 +5,7 @@
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <sstream>
 #include <stdexcept>
 
 namespace cad_uv_map {
@@ -19,6 +20,20 @@ TopoDS_Shape read_brep_file(const std::string& path) {
 
     if (shape.IsNull()) {
         throw std::runtime_error("BREP file produced a null shape: " + path);
+    }
+
+    return shape;
+}
+
+TopoDS_Shape read_brep_bytes(const std::string& brep_data) {
+    BRep_Builder builder;
+    TopoDS_Shape shape;
+    std::istringstream stream(brep_data);
+
+    BRepTools::Read(shape, stream, builder);
+
+    if (shape.IsNull()) {
+        throw std::runtime_error("BREP byte buffer produced a null shape");
     }
 
     return shape;

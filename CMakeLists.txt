@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 find_package(pybind11 CONFIG REQUIRED)
+find_package(VTK CONFIG QUIET)
 find_package(OpenCASCADE CONFIG REQUIRED)
 
 pybind11_add_module(_native
@@ -20,7 +21,9 @@ target_include_directories(_native PRIVATE
 )
 
 target_link_libraries(_native PRIVATE
-  ${OpenCASCADE_LIBRARIES}
+  ${OpenCASCADE_FoundationClasses_LIBRARIES}
+  ${OpenCASCADE_ModelingData_LIBRARIES}
+  ${OpenCASCADE_ModelingAlgorithms_LIBRARIES}
 )
 
 install(TARGETS _native DESTINATION cad_uv_map)
