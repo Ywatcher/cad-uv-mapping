@@ -28,6 +28,36 @@ def normalize_face_uv_samples(*args, **kwargs):
     return _normalize_face_uv_samples(*args, **kwargs)
 
 
+def to_native_uv_coord(*args, **kwargs):
+    from .conversions import to_native_uv_coord as _to_native_uv_coord
+
+    return _to_native_uv_coord(*args, **kwargs)
+
+
+def to_native_uv_coords(*args, **kwargs):
+    from .conversions import to_native_uv_coords as _to_native_uv_coords
+
+    return _to_native_uv_coords(*args, **kwargs)
+
+
+def to_native_face_uv_samples(*args, **kwargs):
+    from .conversions import to_native_face_uv_samples as _to_native_face_uv_samples
+
+    return _to_native_face_uv_samples(*args, **kwargs)
+
+
+def mapping_batch_to_structured_array(*args, **kwargs):
+    from .api import mapping_batch_to_numpy_structured_array as _mapping_batch_to_structured_array
+
+    return _mapping_batch_to_structured_array(*args, **kwargs)
+
+
+def mapping_batch_to_numpy_grid(*args, **kwargs):
+    from .conversions import mapping_batch_to_numpy_grid as _mapping_batch_to_numpy_grid
+
+    return _mapping_batch_to_numpy_grid(*args, **kwargs)
+
+
 def debug_print_shape_uv_sample_batch(*args, **kwargs):
     from .api import debug_print_shape_uv_sample_batch as _debug_print_shape_uv_sample_batch
 
@@ -58,6 +88,11 @@ __all__ = [
     "debug_print_brep_faces",
     "debug_print_shape_faces",
     "normalize_face_uv_samples",
+    "to_native_uv_coord",
+    "to_native_uv_coords",
+    "to_native_face_uv_samples",
+    "mapping_batch_to_structured_array",
+    "mapping_batch_to_numpy_grid",
     "debug_print_shape_uv_sample_batch",
     "debug_print_shape_uv_samples",
     "map_shape_low_face_samples_to_high_faces",

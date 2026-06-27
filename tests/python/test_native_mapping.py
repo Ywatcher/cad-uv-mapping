@@ -2,8 +2,10 @@ import numpy as np
 
 from cad_uv_map import (
     describe_shape_faces,
+    mapping_batch_to_structured_array,
     map_shape_low_face_samples_to_high_faces,
     map_shape_low_face_uv_grid_to_high_face_uv_grid,
+    normalize_face_uv_samples,
 )
 from cad_uv_map.api import MappingContext
 from tests.fixtures.cad_cases import identity_box_pair
@@ -72,3 +74,39 @@ def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
     assert np.all(mapped["high_face_id"] == low_face.face_id)
     assert np.allclose(mapped["high_u"], samples[..., 0])
     assert np.allclose(mapped["high_v"], samples[..., 1])
+
+
+def test_python_conversion_helpers_keep_grouped_face_samples_and_mapping_batches_usable():
+    batch = normalize_face_uv_samples({3: [(0.25, 0.5), (0.75, 0.5)]})
+    assert len(batch.faces) == 1
+    assert batch.faces[0].face_id == 3
+    assert [sample.index for sample in batch.faces[0].samples] == [0, 1]
+
+    pair = identity_box_pair()
+    low_face = describe_shape_faces(pair.low)[0]
+    samples = _sample_uv_grid(low_face, 1, 2)
+    context = MappingContext()
+    context.enable_parallel = True
+    batch = map_shape_low_face_samples_to_high_faces(
+        pair.low,
+        pair.high,
+        low_face.face_id,
+        samples,
+        context,
+    )
+    structured = mapping_batch_to_structured_array(batch)
+    assert structured.shape == (len(samples),)
+    assert structured.dtype.names == (
+        "index",
+        "low_face_id",
+        "low_u",
+        "low_v",
+        "high_face_id",
+        "high_u",
+        "high_v",
+        "point_x",
+        "point_y",
+        "point_z",
+        "distance",
+        "status",
+    )
