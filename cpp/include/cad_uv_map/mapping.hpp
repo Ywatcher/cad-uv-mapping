@@ -113,9 +113,16 @@ void debug_print_brep_uv_samples(
  *
  * TODO: decide whether to accept MappingBatch only or a richer record stream.
  */
+SurfaceEvalBatch evaluate_high_face_samples(
+    const TopoDS_Face& high_face,
+    std::int32_t high_face_id,
+    const std::vector<UvCoord>& high_uv_samples,
+    const MappingContext* shared_context = nullptr);
+
 SurfaceEvalBatch evaluate_mapped_high_uvs(
     const MappingBatch& mapping,
-    const std::vector<TopoDS_Face>& high_faces);
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context = nullptr);
 
 /*
  * Run the full low-sample -> mapping -> surface evaluation pipeline.

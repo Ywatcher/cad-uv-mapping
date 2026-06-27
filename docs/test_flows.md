@@ -50,6 +50,16 @@ Current shape:
   worker tasks.
 - Output order is preserved by sample index.
 
+Why this shape matters:
+
+- it keeps the native boundary simple for tests and debugging
+- it allows the same sample stream to be compared against reference code and
+  future C++ stages
+- it avoids hiding the low-face, high-face, and UV pieces inside one opaque
+  pipeline object
+- it leaves room to add per-face evaluation or other batching strategies later
+  without changing the public result layout
+
 Use this path as the native comparison target against the Python reference
 method.
 

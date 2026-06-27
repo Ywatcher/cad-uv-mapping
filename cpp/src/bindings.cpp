@@ -75,6 +75,37 @@ PYBIND11_MODULE(_native, m) {
     py::class_<cad_uv_map::MappingBatch>(m, "MappingBatch")
         .def_readonly("results", &cad_uv_map::MappingBatch::results);
 
+    py::class_<cad_uv_map::SurfaceEvalResult>(m, "SurfaceEvalResult")
+        .def_readonly("face_id", &cad_uv_map::SurfaceEvalResult::face_id)
+        .def_readonly("u", &cad_uv_map::SurfaceEvalResult::u)
+        .def_readonly("v", &cad_uv_map::SurfaceEvalResult::v)
+        .def_readonly("point_x", &cad_uv_map::SurfaceEvalResult::point_x)
+        .def_readonly("point_y", &cad_uv_map::SurfaceEvalResult::point_y)
+        .def_readonly("point_z", &cad_uv_map::SurfaceEvalResult::point_z)
+        .def_readonly("normal_x", &cad_uv_map::SurfaceEvalResult::normal_x)
+        .def_readonly("normal_y", &cad_uv_map::SurfaceEvalResult::normal_y)
+        .def_readonly("normal_z", &cad_uv_map::SurfaceEvalResult::normal_z)
+        .def_readonly("normal_defined", &cad_uv_map::SurfaceEvalResult::normal_defined);
+
+    py::class_<cad_uv_map::IndexedSurfaceEvalResult>(m, "IndexedSurfaceEvalResult")
+        .def_readonly("index", &cad_uv_map::IndexedSurfaceEvalResult::index)
+        .def_readonly("value", &cad_uv_map::IndexedSurfaceEvalResult::value);
+
+    py::class_<cad_uv_map::SurfaceEvalBatch>(m, "SurfaceEvalBatch")
+        .def_readonly("results", &cad_uv_map::SurfaceEvalBatch::results);
+
+    py::class_<cad_uv_map::MappedSampleRecord>(m, "MappedSampleRecord")
+        .def_readonly("sample", &cad_uv_map::MappedSampleRecord::sample)
+        .def_readonly("mapping", &cad_uv_map::MappedSampleRecord::mapping)
+        .def_readonly("surface", &cad_uv_map::MappedSampleRecord::surface);
+
+    py::class_<cad_uv_map::IndexedMappedSampleRecord>(m, "IndexedMappedSampleRecord")
+        .def_readonly("index", &cad_uv_map::IndexedMappedSampleRecord::index)
+        .def_readonly("value", &cad_uv_map::IndexedMappedSampleRecord::value);
+
+    py::class_<cad_uv_map::MappedSampleBatch>(m, "MappedSampleBatch")
+        .def_readonly("records", &cad_uv_map::MappedSampleBatch::records);
+
     py::class_<cad_uv_map::FaceInfo>(m, "FaceInfo")
         .def_readonly("face_id", &cad_uv_map::FaceInfo::face_id)
         .def_readonly("u_min", &cad_uv_map::FaceInfo::u_min)
@@ -143,4 +174,60 @@ PYBIND11_MODULE(_native, m) {
           py::arg("low_uv_samples"),
           py::arg("shared_context") = nullptr,
           "Map UV samples from one low face to nearest high faces.");
+
+    m.def("evaluate_brep_high_face_samples",
+          [](py::bytes high_brep_data,
+             std::int32_t high_face_id,
+             const std::vector<cad_uv_map::UvCoord>& high_uv_samples,
+             const cad_uv_map::MappingContext* shared_context) {
+              const TopoDS_Shape high_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(high_brep_data));
+              const std::vector<TopoDS_Face> high_faces = cad_uv_map::collect_faces(high_shape);
+              if (high_face_id < 0 || high_face_id >= static_cast<std::int32_t>(high_faces.size())) {
+                  throw std::out_of_range("high_face_id is outside the high face list");
+              }
+              return cad_uv_map::evaluate_high_face_samples(
+                  high_faces[static_cast<std::size_t>(high_face_id)],
+                  high_face_id,
+                  high_uv_samples,
+                  shared_context);
+          },
+          py::arg("high_brep_data"),
+          py::arg("high_face_id"),
+          py::arg("high_uv_samples"),
+          py::arg("shared_context") = nullptr,
+          "Evaluate point and normal data for UV samples on one high face.");
+
+    m.def("evaluate_brep_mapped_high_uvs",
+          [](py::bytes high_brep_data,
+             const cad_uv_map::MappingBatch& mapping,
+             const cad_uv_map::MappingContext* shared_context) {
+              const TopoDS_Shape high_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(high_brep_data));
+              return cad_uv_map::evaluate_mapped_high_uvs(
+                  mapping,
+                  cad_uv_map::collect_faces(high_shape),
+                  shared_context);
+          },
+          py::arg("high_brep_data"),
+          py::arg("mapping"),
+          py::arg("shared_context") = nullptr,
+          "Evaluate mapped high-face UVs to point and normal batches.");
+
+    m.def("map_and_evaluate_brep_samples",
+          [](py::bytes low_brep_data,
+             py::bytes high_brep_data,
+             const cad_uv_map::FaceUvSampleBatch& low_face_samples,
+             const cad_uv_map::MappingContext* shared_context) {
+              const TopoDS_Shape low_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(low_brep_data));
+              const TopoDS_Shape high_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(high_brep_data));
+              return cad_uv_map::map_and_evaluate_samples(
+                  low_face_samples,
+                  cad_uv_map::collect_faces(low_shape),
+                  cad_uv_map::collect_faces(high_shape),
+                  shared_context);
+          },
+          py::arg("low_brep_data"),
+          py::arg("high_brep_data"),
+          py::arg("low_face_samples"),
+          py::arg("shared_context") = nullptr,
+          "Run the full low-sample to mapping to surface-eval pipeline.");
 }

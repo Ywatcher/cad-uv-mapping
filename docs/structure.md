@@ -136,6 +136,16 @@ The current intended execution order is:
 7. `indexed_record.hpp`-backed result rows preserve the original sample order.
 8. Python receives arrays or record structs for tests, baking, or debugging.
 
+Why it is arranged this way:
+
+- face lookup stays cheap by indexing into the face list directly
+- OCCT surface evaluation is the expensive part, so it sits inside the native
+  batch functions
+- sample order is preserved by carrying an explicit index through every stage
+- grouping by face is an implementation detail, not the public data model
+- the normal stage can run per sample first, then be optimized later by face
+  grouping if profiling says it matters
+
 For the current development flow, the single-low-face mapping core should be
 the innermost unit, with multi-face batch wrappers sitting above it.
 

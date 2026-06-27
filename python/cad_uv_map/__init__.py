@@ -82,6 +82,24 @@ def map_shape_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs):
     return _map_shape_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs)
 
 
+def evaluate_shape_high_face_samples(*args, **kwargs):
+    from .api import evaluate_shape_high_face_samples as _evaluate_shape_high_face_samples
+
+    return _evaluate_shape_high_face_samples(*args, **kwargs)
+
+
+def evaluate_shape_mapped_high_uvs(*args, **kwargs):
+    from .api import evaluate_shape_mapped_high_uvs as _evaluate_shape_mapped_high_uvs
+
+    return _evaluate_shape_mapped_high_uvs(*args, **kwargs)
+
+
+def map_and_evaluate_shape_samples(*args, **kwargs):
+    from .api import map_and_evaluate_shape_samples as _map_and_evaluate_shape_samples
+
+    return _map_and_evaluate_shape_samples(*args, **kwargs)
+
+
 __all__ = [
     "describe_brep_faces",
     "describe_shape_faces",
@@ -97,4 +115,7 @@ __all__ = [
     "debug_print_shape_uv_samples",
     "map_shape_low_face_samples_to_high_faces",
     "map_shape_low_face_uv_grid_to_high_face_uv_grid",
+    "evaluate_shape_high_face_samples",
+    "evaluate_shape_mapped_high_uvs",
+    "map_and_evaluate_shape_samples",
 ]

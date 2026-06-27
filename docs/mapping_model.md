@@ -20,6 +20,22 @@ For every low-face sample:
 - `normal`: selected world-space high normal.
 - `distance`: projection/ray distance from the low sample.
 
+## Why This Shape
+
+The mapping stage is sample-wise because one low face can legitimately map to
+different high faces within the same grid.
+
+That means:
+
+- `high_face_id` must stay per-sample, not per-batch
+- the normal stage should read `high_face_id` and `high_uv` from each sample
+- output order should be preserved by sample index, not by face grouping
+
+The face id lookup itself is cheap. The real cost comes from OCCT surface
+adaptor setup and per-sample geometry evaluation. That is why the data model
+keeps samples independent, while implementations are free to batch or parallelize
+behind the scenes.
+
 ## First Algorithms
 
 1. Nearest surface projection.

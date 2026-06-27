@@ -143,3 +143,38 @@ def map_shape_low_face_uv_grid_to_high_face_uv_grid(
 def mapping_batch_to_numpy_structured_array(batch):
     """Convert a native MappingBatch into a flat structured NumPy array."""
     return mapping_batch_to_structured_array(batch)
+
+
+def evaluate_shape_high_face_samples(
+    high_shape,
+    high_face_id: int,
+    high_uv_samples,
+    shared_context=None,
+):
+    """Evaluate point and normal data for UV samples on one high face."""
+    return _native.evaluate_brep_high_face_samples(
+        shape_to_brep_bytes(high_shape),
+        int(high_face_id),
+        to_native_uv_coords(high_uv_samples),
+        shared_context,
+    )
+
+
+def evaluate_shape_mapped_high_uvs(high_shape, mapping, shared_context=None):
+    """Evaluate a mapping batch against a high shape and return point/normal data."""
+    return _native.evaluate_brep_mapped_high_uvs(shape_to_brep_bytes(high_shape), mapping, shared_context)
+
+
+def map_and_evaluate_shape_samples(
+    low_shape,
+    high_shape,
+    low_face_samples,
+    shared_context=None,
+):
+    """Run the low-sample to mapping to surface-eval pipeline in one call."""
+    return _native.map_and_evaluate_brep_samples(
+        shape_to_brep_bytes(low_shape),
+        shape_to_brep_bytes(high_shape),
+        normalize_face_uv_samples(low_face_samples),
+        shared_context,
+    )

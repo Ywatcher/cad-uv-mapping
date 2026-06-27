@@ -134,6 +134,62 @@ MappingResult map_low_face_sample_to_high_faces(
     };
 }
 
+SurfaceEvalResult make_no_surface_eval_result(std::int32_t face_id, const UvCoord& uv) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    return SurfaceEvalResult{
+        face_id,
+        uv.u,
+        uv.v,
+        nan,
+        nan,
+        nan,
+        nan,
+        nan,
+        nan,
+        false,
+    };
+}
+
+SurfaceEvalResult evaluate_high_face_sample(
+    const TopoDS_Face& high_face,
+    std::int32_t high_face_id,
+    const UvCoord& uv,
+    double tolerance) {
+    try {
+        BRepAdaptor_Surface high_surface(high_face);
+        const gp_Pnt point = high_surface.Value(uv.u, uv.v);
+        BRepLProp_SLProps props(high_surface, uv.u, uv.v, 1, tolerance);
+
+        if (!props.IsNormalDefined()) {
+            SurfaceEvalResult result = make_no_surface_eval_result(high_face_id, uv);
+            result.point_x = point.X();
+            result.point_y = point.Y();
+            result.point_z = point.Z();
+            return result;
+        }
+
+        gp_Dir normal = props.Normal();
+        if (high_face.Orientation() == TopAbs_REVERSED) {
+            normal.Reverse();
+        }
+
+        return SurfaceEvalResult{
+            high_face_id,
+            uv.u,
+            uv.v,
+            point.X(),
+            point.Y(),
+            point.Z(),
+            normal.X(),
+            normal.Y(),
+            normal.Z(),
+            true,
+        };
+    } catch (const std::exception&) {
+        return make_no_surface_eval_result(high_face_id, uv);
+    }
+}
+
 std::size_t mapping_worker_count(std::size_t sample_count, const MappingContext* shared_context) {
     if (shared_context == nullptr || !shared_context->enable_parallel || sample_count < 64) {
         return 1;
@@ -268,6 +324,31 @@ MappingBatch map_low_face_samples_to_high_faces(
     return batch;
 }
 
+SurfaceEvalBatch evaluate_high_face_samples(
+    const TopoDS_Face& high_face,
+    std::int32_t high_face_id,
+    const std::vector<UvCoord>& high_uv_samples,
+    const MappingContext* shared_context) {
+    (void)shared_context;
+
+    SurfaceEvalBatch batch;
+    batch.results.resize(high_uv_samples.size());
+
+    const double tolerance = mapping_tolerance(shared_context);
+    for (std::size_t sample_index = 0; sample_index < high_uv_samples.size(); ++sample_index) {
+        batch.results[sample_index] = IndexedSurfaceEvalResult{
+            sample_index,
+            evaluate_high_face_sample(
+                high_face,
+                high_face_id,
+                high_uv_samples[sample_index],
+                tolerance),
+        };
+    }
+
+    return batch;
+}
+
 MappingBatch map_brep_low_face_samples_to_high_faces(
     const std::string& low_brep_data,
     const std::string& high_brep_data,
@@ -374,28 +455,83 @@ void debug_print_brep_uv_samples(
 
 SurfaceEvalBatch evaluate_mapped_high_uvs(
     const MappingBatch& mapping,
-    const std::vector<TopoDS_Face>& high_faces) {
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context) {
     SurfaceEvalBatch batch;
+    std::size_t output_count = 0;
+    for (const IndexedMappingResult& indexed_mapping : mapping.results) {
+        output_count = std::max(output_count, indexed_mapping.index + 1);
+    }
+    batch.results.resize(output_count);
 
-    // TODO: this stage should only read the selected high face and UV per sample.
-    // TODO: determine whether to cache adaptors per face before parallelizing.
-    //
-    // Intended OCCT use:
-    // - BRepAdaptor_Surface(high_face)
-    // - BRepLProp_SLProps(adaptor, u, v, 1, tol)
-    // - props.IsNormalDefined()
-    // - props.Normal()
-    // - BRepAdaptor_Surface::Value(u, v) for the 3D point
-    // - face.Orientation() / TopAbs_REVERSED to flip the normal when needed
-    //
-    // What we must do ourselves:
-    // - map a `high_face_id` back to the face list safely
-    // - handle missing/failed mappings
-    // - define the fallback for undefined normals
-    // - convert OCCT vectors into our plain POD result structures
+    std::vector<std::vector<IndexedUvCoord>> grouped_samples(high_faces.size());
+    std::size_t grouped_count = 0;
 
-    (void)mapping;
-    (void)high_faces;
+    for (const IndexedMappingResult& indexed_mapping : mapping.results) {
+        const MappingResult& value = indexed_mapping.value;
+        if (value.high_face_id < 0 || value.high_face_id >= static_cast<std::int32_t>(high_faces.size())) {
+            batch.results[indexed_mapping.index] = IndexedSurfaceEvalResult{
+                indexed_mapping.index,
+                make_no_surface_eval_result(value.high_face_id, UvCoord{value.high_u, value.high_v}),
+            };
+            continue;
+        }
+
+        grouped_samples[static_cast<std::size_t>(value.high_face_id)].push_back(IndexedUvCoord{
+            indexed_mapping.index,
+            UvCoord{value.high_u, value.high_v},
+        });
+        ++grouped_count;
+    }
+
+    auto evaluate_group = [&](std::int32_t high_face_id) {
+        const std::vector<IndexedUvCoord>& group = grouped_samples[static_cast<std::size_t>(high_face_id)];
+        if (group.empty()) {
+            return;
+        }
+
+        std::vector<UvCoord> local_uvs;
+        local_uvs.reserve(group.size());
+        for (const IndexedUvCoord& indexed_uv : group) {
+            local_uvs.push_back(indexed_uv.value);
+        }
+
+        SurfaceEvalBatch group_batch = evaluate_high_face_samples(
+            high_faces[static_cast<std::size_t>(high_face_id)],
+            high_face_id,
+            local_uvs,
+            shared_context);
+
+        for (std::size_t local_index = 0; local_index < group_batch.results.size(); ++local_index) {
+            const std::size_t output_index = group[local_index].index;
+            batch.results[output_index] = IndexedSurfaceEvalResult{
+                output_index,
+                group_batch.results[local_index].value,
+            };
+        }
+    };
+
+    const bool use_parallel = shared_context != nullptr && shared_context->enable_parallel && grouped_count > 1;
+    if (use_parallel) {
+        std::vector<std::future<void>> futures;
+        futures.reserve(high_faces.size());
+        for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(high_faces.size()); ++high_face_id) {
+            if (grouped_samples[static_cast<std::size_t>(high_face_id)].empty()) {
+                continue;
+            }
+            futures.push_back(std::async(std::launch::async, [&, high_face_id]() {
+                evaluate_group(high_face_id);
+            }));
+        }
+        for (std::future<void>& future : futures) {
+            future.get();
+        }
+    } else {
+        for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(high_faces.size()); ++high_face_id) {
+            evaluate_group(high_face_id);
+        }
+    }
+
     return batch;
 }
 
@@ -406,23 +542,36 @@ MappedSampleBatch map_and_evaluate_samples(
     const MappingContext* shared_context) {
     MappedSampleBatch batch;
 
-    // TODO: this convenience path should just orchestrate the two stages above.
-    // TODO: keep this function thin so tests can hit each stage independently.
-    //
-    // Intended structure:
-    // 1. map low UV samples to high faces, one low face at a time.
-    // 2. evaluate high UVs to normals.
-    // 3. merge sample, mapping, and surface results into one record stream.
-    //
-    // What we must do ourselves:
-    // - decide whether records are joined by index or by explicit sample ids
-    // - keep errors visible instead of silently dropping failed samples
-    // - decide how to expose partial failures to Python and tests
+    const MappingBatch mapping = map_low_face_sample_groups_to_high_faces(
+        low_face_samples,
+        low_faces,
+        high_faces,
+        shared_context);
+    const SurfaceEvalBatch surface = evaluate_mapped_high_uvs(mapping, high_faces, shared_context);
 
-    (void)low_face_samples;
-    (void)low_faces;
-    (void)high_faces;
-    (void)shared_context;
+    std::size_t output_count = 0;
+    for (const IndexedMappingResult& indexed_mapping : mapping.results) {
+        output_count = std::max(output_count, indexed_mapping.index + 1);
+    }
+    batch.records.resize(output_count);
+    for (const IndexedMappingResult& indexed_mapping : mapping.results) {
+        const MappingResult& mapping_value = indexed_mapping.value;
+        const std::size_t output_index = indexed_mapping.index;
+        const SurfaceEvalResult& surface_value = surface.results[output_index].value;
+
+        batch.records[output_index] = IndexedMappedSampleRecord{
+            output_index,
+            MappedSampleRecord{
+                UvSample{
+                    mapping_value.low_face_id,
+                    UvCoord{mapping_value.low_u, mapping_value.low_v},
+                },
+                mapping_value,
+                surface_value,
+            },
+        };
+    }
+
     return batch;
 }
 

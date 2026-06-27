@@ -2,6 +2,9 @@ import numpy as np
 
 from cad_uv_map import (
     describe_shape_faces,
+    evaluate_shape_high_face_samples,
+    evaluate_shape_mapped_high_uvs,
+    map_and_evaluate_shape_samples,
     mapping_batch_to_structured_array,
     map_shape_low_face_samples_to_high_faces,
     map_shape_low_face_uv_grid_to_high_face_uv_grid,
@@ -110,3 +113,35 @@ def test_python_conversion_helpers_keep_grouped_face_samples_and_mapping_batches
         "distance",
         "status",
     )
+
+
+def test_native_high_face_normal_evaluation_and_full_pipeline_smoke():
+    pair = identity_box_pair()
+    low_face = describe_shape_faces(pair.low)[0]
+    samples = _sample_uv_grid(low_face, 2, 2)
+    context = MappingContext()
+    context.enable_parallel = True
+
+    surface_batch = evaluate_shape_high_face_samples(pair.high, low_face.face_id, samples, context)
+    assert len(surface_batch.results) == len(samples)
+    assert all(result.value.normal_defined for result in surface_batch.results)
+
+    mapping_batch = map_shape_low_face_samples_to_high_faces(
+        pair.low,
+        pair.high,
+        low_face.face_id,
+        samples,
+        context,
+    )
+    mapped_surface_batch = evaluate_shape_mapped_high_uvs(pair.high, mapping_batch)
+    assert len(mapped_surface_batch.results) == len(samples)
+    assert all(result.value.normal_defined for result in mapped_surface_batch.results)
+
+    combined_batch = map_and_evaluate_shape_samples(
+        pair.low,
+        pair.high,
+        {low_face.face_id: samples},
+        context,
+    )
+    assert len(combined_batch.records) == len(samples)
+    assert all(record.value.surface.normal_defined for record in combined_batch.records)
