@@ -1,6 +1,10 @@
 # Test Flows
 
-This repo has two reference paths right now.
+This repo has three relevant paths right now:
+
+- the manual/synthetic reference,
+- the CAD-derived reference,
+- the native C++ mapping path.
 
 ## Reference Methods
 
@@ -34,6 +38,21 @@ Current limitations are marked with FIXME comments in the module:
 
 Use this as a scaffold for testing behavior on arbitrary CAD shapes.
 
+### Native C++ Mapping Path
+
+The native mapping entry point is the face-first bridge in `cad_uv_map`.
+
+Current shape:
+
+- Python normalizes input into grouped face samples.
+- C++ maps one low face at a time through `map_low_face_samples_to_high_faces`.
+- `MappingContext.enable_parallel` can split a large low-face sample set across
+  worker tasks.
+- Output order is preserved by sample index.
+
+Use this path as the native comparison target against the Python reference
+method.
+
 ## Current Comparisons
 
 ### Manual Reference vs CAD-Derived Reference
@@ -65,7 +84,7 @@ tangent-basis conventions rather than hit selection.
 
 ### C++ Method vs Reference
 
-Planned flow:
+Current comparison flow:
 
 1. Generate or load a low/high CAD pair.
 2. Run the Python CAD-derived reference method.
@@ -82,13 +101,19 @@ For new shapes, add them first as deterministic fixtures in
 `tests/fixtures/cad_cases.py`, then compare both the reference and native paths
 against those fixtures.
 
+If a normal comparison fails, do not assume the normal sign is wrong first.
+Check the mapping arrays and face selection first, because a projection or
+face-id mismatch will often surface as a normal mismatch later.
+
 ## TODO
 
 - Add normal-ray or cage projection to the CAD-derived reference method.
-- Add multithreading to CAD-derived reference projection so larger grids are fast
-  enough for routine tests.
+- Add multithreading to the CAD-derived reference projection so larger grids are
+  fast enough for routine tests.
 - Add tests that compare `high_uv` and `high_face_id` directly, independent of
   normal encoding.
+- Add tests that compare the native C++ mapper against the CAD-derived
+  reference on the current fixture set.
 - Add no-hit and outside-trim examples.
 - Add reversed-orientation examples for normal sign behavior.
 - Add seam-pressure cases for periodic surfaces such as cylinders and pedestals.

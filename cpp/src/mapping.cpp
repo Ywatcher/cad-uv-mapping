@@ -7,12 +7,14 @@
 #include <BRep_Tool.hxx>
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <iterator>
 #include <limits>
 #include <ShapeAnalysis_Surface.hxx>
 #include <stdexcept>
 #include <TopAbs.hxx>
 #include <gp_Pnt.hxx>
+#include <thread>
 #include <iostream>
 
 namespace cad_uv_map {
@@ -34,28 +36,12 @@ double mapping_tolerance(const MappingContext* shared_context) {
     return shared_context->tolerance;
 }
 
-MappingResult make_no_hit_result(std::int32_t low_face_id, const UvCoord& uv) {
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    return MappingResult{
-        low_face_id,
-        uv.u,
-        uv.v,
-        -1,
-        nan,
-        nan,
-        nan,
-        nan,
-        nan,
-        std::numeric_limits<double>::infinity(),
-        MappingStatus::no_hit,
-    };
-}
-
 ProjectionCandidate project_point_to_face(
     const gp_Pnt& point,
     std::int32_t high_face_id,
     const TopoDS_Face& high_face,
     double tolerance) {
+    // OCCT gives us the distance query and the UV recovery on the target face.
     BRepBuilderAPI_MakeVertex vertex_builder(point);
     BRepExtrema_DistShapeShape distance(vertex_builder.Vertex(), high_face, tolerance);
     distance.Perform();
@@ -75,6 +61,87 @@ ProjectionCandidate project_point_to_face(
         hit_point,
         distance.Value(),
     };
+}
+
+MappingResult map_low_face_sample_to_high_faces(
+    const BRepAdaptor_Surface& low_surface,
+    std::int32_t low_face_id,
+    const UvCoord& uv,
+    const std::vector<TopoDS_Face>& high_faces,
+    double tolerance) {
+    // This helper is intentionally sample-local so the parallel wrapper can call
+    // it independently for disjoint ranges without sharing mutable state.
+    const gp_Pnt low_point = low_surface.Value(uv.u, uv.v);
+
+    bool has_best = false;
+    bool ambiguous = false;
+    ProjectionCandidate best{
+        -1,
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(),
+        gp_Pnt(),
+        std::numeric_limits<double>::infinity(),
+    };
+
+    for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(high_faces.size()); ++high_face_id) {
+        try {
+            const ProjectionCandidate candidate = project_point_to_face(
+                low_point,
+                high_face_id,
+                high_faces[static_cast<std::size_t>(high_face_id)],
+                tolerance);
+
+            if (!has_best || candidate.distance < best.distance - tolerance) {
+                best = candidate;
+                has_best = true;
+                ambiguous = false;
+            } else if (std::abs(candidate.distance - best.distance) <= tolerance) {
+                ambiguous = true;
+            }
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+
+    if (!has_best) {
+        return MappingResult{
+            low_face_id,
+            uv.u,
+            uv.v,
+            -1,
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity(),
+            MappingStatus::no_hit,
+        };
+    }
+
+    return MappingResult{
+        low_face_id,
+        uv.u,
+        uv.v,
+        best.high_face_id,
+        best.high_u,
+        best.high_v,
+        best.point.X(),
+        best.point.Y(),
+        best.point.Z(),
+        best.distance,
+        ambiguous ? MappingStatus::ambiguous : MappingStatus::hit,
+    };
+}
+
+std::size_t mapping_worker_count(std::size_t sample_count, const MappingContext* shared_context) {
+    if (shared_context == nullptr || !shared_context->enable_parallel || sample_count < 64) {
+        return 1;
+    }
+
+    // Keep the worker count bounded by hardware, but never exceed the sample count.
+    const std::size_t hardware = std::max<std::size_t>(1, std::thread::hardware_concurrency());
+    return std::min(sample_count, hardware);
 }
 
 FaceUvSampleBatch normalize_flat_uv_samples(const std::vector<UvSample>& samples) {
@@ -143,69 +210,59 @@ MappingBatch map_low_face_samples_to_high_faces(
     const std::vector<TopoDS_Face>& high_faces,
     const MappingContext* shared_context) {
     MappingBatch batch;
-    batch.results.reserve(low_uv_samples.size());
-
     const double tolerance = mapping_tolerance(shared_context);
-    BRepAdaptor_Surface low_surface(low_face);
+    // Preserve the input order by writing each sample directly back to its slot.
+    batch.results.resize(low_uv_samples.size());
 
-    for (std::size_t sample_index = 0; sample_index < low_uv_samples.size(); ++sample_index) {
-        const UvCoord& uv = low_uv_samples[sample_index];
-        const gp_Pnt low_point = low_surface.Value(uv.u, uv.v);
+    const std::size_t worker_count = mapping_worker_count(low_uv_samples.size(), shared_context);
 
-        bool has_best = false;
-        bool ambiguous = false;
-        ProjectionCandidate best{
-            -1,
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            gp_Pnt(),
-            std::numeric_limits<double>::infinity(),
-        };
-
-        for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(high_faces.size()); ++high_face_id) {
-            try {
-                const ProjectionCandidate candidate = project_point_to_face(
-                    low_point,
-                    high_face_id,
-                    high_faces[static_cast<std::size_t>(high_face_id)],
-                    tolerance);
-
-                if (!has_best || candidate.distance < best.distance - tolerance) {
-                    best = candidate;
-                    has_best = true;
-                    ambiguous = false;
-                } else if (std::abs(candidate.distance - best.distance) <= tolerance) {
-                    ambiguous = true;
-                }
-            } catch (const std::exception&) {
-                continue;
-            }
-        }
-
-        if (!has_best) {
-            batch.results.push_back(IndexedMappingResult{
+    if (worker_count <= 1) {
+        BRepAdaptor_Surface low_surface(low_face);
+        for (std::size_t sample_index = 0; sample_index < low_uv_samples.size(); ++sample_index) {
+            batch.results[sample_index] = IndexedMappingResult{
                 sample_index,
-                make_no_hit_result(low_face_id, uv),
-            });
-            continue;
+                map_low_face_sample_to_high_faces(
+                    low_surface,
+                    low_face_id,
+                    low_uv_samples[sample_index],
+                    high_faces,
+                    tolerance),
+            };
+        }
+        return batch;
+    }
+
+    const std::size_t chunk_size = (low_uv_samples.size() + worker_count - 1) / worker_count;
+    std::vector<std::future<void>> futures;
+    futures.reserve(worker_count);
+
+    for (std::size_t worker_index = 0; worker_index < worker_count; ++worker_index) {
+        const std::size_t begin = worker_index * chunk_size;
+        if (begin >= low_uv_samples.size()) {
+            break;
         }
 
-        batch.results.push_back(IndexedMappingResult{
-            sample_index,
-            MappingResult{
-                low_face_id,
-                uv.u,
-                uv.v,
-                best.high_face_id,
-                best.high_u,
-                best.high_v,
-                best.point.X(),
-                best.point.Y(),
-                best.point.Z(),
-                best.distance,
-                ambiguous ? MappingStatus::ambiguous : MappingStatus::hit,
-            },
-        });
+        const std::size_t end = std::min(low_uv_samples.size(), begin + chunk_size);
+        futures.push_back(std::async(std::launch::async, [&, begin, end]() {
+            // Each worker builds its own adaptor so the OCCT face access stays local
+            // to the task and the only shared state is the read-only input arrays.
+            BRepAdaptor_Surface low_surface(low_face);
+            for (std::size_t sample_index = begin; sample_index < end; ++sample_index) {
+                batch.results[sample_index] = IndexedMappingResult{
+                    sample_index,
+                    map_low_face_sample_to_high_faces(
+                        low_surface,
+                        low_face_id,
+                        low_uv_samples[sample_index],
+                        high_faces,
+                        tolerance),
+                };
+            }
+        }));
+    }
+
+    for (std::future<void>& future : futures) {
+        future.get();
     }
 
     return batch;
@@ -237,7 +294,8 @@ MappingBatch map_brep_low_face_samples_to_high_faces(
 MappingBatch map_low_face_sample_groups_to_high_faces(
     const FaceUvSampleBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
-    const std::vector<TopoDS_Face>& high_faces) {
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context) {
     MappingBatch batch;
 
     for (const FaceUvSamples& group : low_face_samples.faces) {
@@ -245,6 +303,8 @@ MappingBatch map_low_face_sample_groups_to_high_faces(
             throw std::out_of_range("sample group face_id is outside the low face list");
         }
 
+        // Flatten one face-group at a time, then restore the original sample indices
+        // so later stages can still join records by the Python-side order.
         std::vector<UvCoord> local_uvs;
         local_uvs.reserve(group.samples.size());
         for (const IndexedUvCoord& indexed_uv : group.samples) {
@@ -256,7 +316,7 @@ MappingBatch map_low_face_sample_groups_to_high_faces(
             group.face_id,
             local_uvs,
             high_faces,
-            nullptr);
+            shared_context);
 
         for (std::size_t local_index = 0; local_index < group_batch.results.size(); ++local_index) {
             IndexedMappingResult result = group_batch.results[local_index];
@@ -273,14 +333,19 @@ MappingBatch map_uv_samples_to_high_faces(
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
     const MappingContext* shared_context) {
-    (void)shared_context;
-    return map_low_face_sample_groups_to_high_faces(normalize_flat_uv_samples(samples), low_faces, high_faces);
+    // Keep the compatibility path thin: normalize once, then reuse the grouped path.
+    return map_low_face_sample_groups_to_high_faces(
+        normalize_flat_uv_samples(samples),
+        low_faces,
+        high_faces,
+        shared_context);
 }
 
 void debug_print_shape_uv_sample_batch(
     const TopoDS_Shape& shape,
     const FaceUvSampleBatch& samples,
     const std::string& label) {
+    // Debug helpers stay in C++ so we can verify the Python bridge before mapping.
     print_face_uv_sample_batch(shape, samples, label);
 }
 

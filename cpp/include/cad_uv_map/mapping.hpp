@@ -67,7 +67,8 @@ MappingBatch map_brep_low_face_samples_to_high_faces(
 MappingBatch map_low_face_sample_groups_to_high_faces(
     const FaceUvSampleBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
-    const std::vector<TopoDS_Face>& high_faces);
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context = nullptr);
 
 /*
  * Backward-compatible convenience wrapper for flat sample streams.

@@ -1,6 +1,11 @@
 import numpy as np
 
-from cad_uv_map import describe_shape_faces, map_shape_low_face_samples_to_high_faces
+from cad_uv_map import (
+    describe_shape_faces,
+    map_shape_low_face_samples_to_high_faces,
+    map_shape_low_face_uv_grid_to_high_face_uv_grid,
+)
+from cad_uv_map.api import MappingContext
 from tests.fixtures.cad_cases import identity_box_pair
 
 
@@ -23,9 +28,17 @@ def _status_name(status) -> str:
 def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits():
     pair = identity_box_pair()
     low_face = describe_shape_faces(pair.low)[0]
-    samples = _sample_uv_grid(low_face, 2, 2)
+    samples = _sample_uv_grid(low_face, 9, 9)
+    context = MappingContext()
+    context.enable_parallel = True
 
-    batch = map_shape_low_face_samples_to_high_faces(pair.low, pair.high, low_face.face_id, samples)
+    batch = map_shape_low_face_samples_to_high_faces(
+        pair.low,
+        pair.high,
+        low_face.face_id,
+        samples,
+        context,
+    )
 
     assert len(batch.results) == len(samples)
     for expected_index, result in enumerate(batch.results):
@@ -37,3 +50,25 @@ def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits(
         assert np.isclose(value.high_u, value.low_u)
         assert np.isclose(value.high_v, value.low_v)
         assert np.isclose(value.distance, 0.0)
+
+
+def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
+    pair = identity_box_pair()
+    low_face = describe_shape_faces(pair.low)[0]
+    samples = np.array(_sample_uv_grid(low_face, 2, 2), dtype=np.float64).reshape(2, 2, 2)
+    context = MappingContext()
+    context.enable_parallel = True
+
+    mapped = map_shape_low_face_uv_grid_to_high_face_uv_grid(
+        pair.low,
+        pair.high,
+        low_face.face_id,
+        samples,
+        context,
+    )
+
+    assert mapped.shape == (2, 2)
+    assert mapped.dtype.names == ("high_face_id", "high_u", "high_v")
+    assert np.all(mapped["high_face_id"] == low_face.face_id)
+    assert np.allclose(mapped["high_u"], samples[..., 0])
+    assert np.allclose(mapped["high_v"], samples[..., 1])

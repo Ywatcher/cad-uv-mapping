@@ -5,7 +5,11 @@ from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
+
 from . import _native
+
+MappingContext = _native.MappingContext
 
 
 @dataclass(frozen=True)
@@ -208,11 +212,67 @@ def debug_print_shape_uv_samples(shape, samples, label: str = "build123d shape +
     )
 
 
-def map_shape_low_face_samples_to_high_faces(low_shape, high_shape, low_face_id: int, low_uv_samples):
+def map_shape_low_face_samples_to_high_faces(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_samples,
+    shared_context=None,
+):
     """Map UV samples on one low face to nearest high faces."""
     return _native.map_brep_low_face_samples_to_high_faces(
         shape_to_brep_bytes(low_shape),
         shape_to_brep_bytes(high_shape),
         int(low_face_id),
         _make_native_uv_coords(low_uv_samples),
+        shared_context,
     )
+
+
+def map_shape_low_face_uv_grid_to_high_face_uv_grid(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_grid,
+    shared_context=None,
+):
+    """Map a UV grid to a structured NumPy grid of high-face ids and UVs."""
+    low_uv_grid_array = np.asarray(low_uv_grid, dtype=np.float64)
+    if low_uv_grid_array.ndim == 1:
+        if low_uv_grid_array.shape[0] != 2:
+            raise ValueError("low_uv_grid must end with a UV pair")
+        grid_shape = ()
+        flat_uvs = [tuple(low_uv_grid_array.tolist())]
+    else:
+        if low_uv_grid_array.shape[-1] != 2:
+            raise ValueError("low_uv_grid must have a trailing dimension of size 2")
+        grid_shape = low_uv_grid_array.shape[:-1]
+        flat_uvs = low_uv_grid_array.reshape(-1, 2).tolist()
+
+    batch = _native.map_brep_low_face_samples_to_high_faces(
+        shape_to_brep_bytes(low_shape),
+        shape_to_brep_bytes(high_shape),
+        int(low_face_id),
+        _make_native_uv_coords(flat_uvs),
+        shared_context,
+    )
+
+    dtype = np.dtype(
+        [
+            ("high_face_id", np.int32),
+            ("high_u", np.float64),
+            ("high_v", np.float64),
+        ]
+    )
+    mapped = np.empty(grid_shape, dtype=dtype)
+
+    for flat_index, result in enumerate(batch.results):
+        row = np.unravel_index(flat_index, grid_shape) if grid_shape else ()
+        value = result.value
+        mapped[row] = (
+            int(value.high_face_id),
+            float(value.high_u),
+            float(value.high_v),
+        )
+
+    return mapped

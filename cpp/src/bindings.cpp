@@ -42,6 +42,12 @@ PYBIND11_MODULE(_native, m) {
         .def(py::init<>())
         .def_readwrite("faces", &cad_uv_map::FaceUvSampleBatch::faces);
 
+    py::class_<cad_uv_map::MappingContext>(m, "MappingContext")
+        .def(py::init<>())
+        .def_readwrite("tolerance", &cad_uv_map::MappingContext::tolerance)
+        .def_readwrite("enable_parallel", &cad_uv_map::MappingContext::enable_parallel)
+        .def_readwrite("preserve_input_order", &cad_uv_map::MappingContext::preserve_input_order);
+
     py::enum_<cad_uv_map::MappingStatus>(m, "MappingStatus")
         .value("hit", cad_uv_map::MappingStatus::hit)
         .value("no_hit", cad_uv_map::MappingStatus::no_hit)
@@ -122,16 +128,19 @@ PYBIND11_MODULE(_native, m) {
           [](py::bytes low_brep_data,
              py::bytes high_brep_data,
              std::int32_t low_face_id,
-             const std::vector<cad_uv_map::UvCoord>& low_uv_samples) {
+             const std::vector<cad_uv_map::UvCoord>& low_uv_samples,
+             const cad_uv_map::MappingContext* shared_context) {
               return cad_uv_map::map_brep_low_face_samples_to_high_faces(
                   static_cast<std::string>(low_brep_data),
                   static_cast<std::string>(high_brep_data),
                   low_face_id,
-                  low_uv_samples);
+                  low_uv_samples,
+                  shared_context);
           },
           py::arg("low_brep_data"),
           py::arg("high_brep_data"),
           py::arg("low_face_id"),
           py::arg("low_uv_samples"),
+          py::arg("shared_context") = nullptr,
           "Map UV samples from one low face to nearest high faces.");
 }
