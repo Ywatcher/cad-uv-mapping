@@ -4,10 +4,13 @@
 #include "cad_uv_map/indexed_record.hpp"
 #include "cad_uv_map/mapping_context.hpp"
 #include "cad_uv_map/mapping_types.hpp"
+#include "cad_uv_map/occt_io.hpp"
 #include "cad_uv_map/sample.hpp"
 #include "cad_uv_map/surface_eval.hpp"
 
+#include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
+#include <string>
 #include <vector>
 
 namespace cad_uv_map {
@@ -47,6 +50,13 @@ MappingBatch map_low_face_samples_to_high_faces(
     const std::vector<TopoDS_Face>& high_faces,
     const MappingContext* shared_context = nullptr);
 
+MappingBatch map_brep_low_face_samples_to_high_faces(
+    const std::string& low_brep_data,
+    const std::string& high_brep_data,
+    std::int32_t low_face_id,
+    const std::vector<UvCoord>& low_uv_samples,
+    const MappingContext* shared_context = nullptr);
+
 /*
  * Multi-face wrapper for the single-face core.
  *
@@ -70,6 +80,32 @@ MappingBatch map_uv_samples_to_high_faces(
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
     const MappingContext* shared_context = nullptr);
+
+/*
+ * Debug print helpers for UV sample batches.
+ *
+ * These functions are meant to validate the Python-to-C++ input bridge before
+ * the real mapping algorithm is filled in.
+ */
+void debug_print_shape_uv_sample_batch(
+    const TopoDS_Shape& shape,
+    const FaceUvSampleBatch& samples,
+    const std::string& label);
+
+void debug_print_brep_uv_sample_batch(
+    const std::string& brep_data,
+    const FaceUvSampleBatch& samples,
+    const std::string& label);
+
+void debug_print_shape_uv_samples(
+    const TopoDS_Shape& shape,
+    const std::vector<UvSample>& samples,
+    const std::string& label);
+
+void debug_print_brep_uv_samples(
+    const std::string& brep_data,
+    const std::vector<UvSample>& samples,
+    const std::string& label);
 
 /*
  * Evaluate normals and hit points for already-mapped high-side UVs.
