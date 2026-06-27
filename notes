@@ -1,0 +1,7 @@
+Jun 27
+seems that in cpp codes
+data structures and functions for inspecting python data are in "mapping"
+shall we move it out, in order to separate with code for uv mapping and normal 
+calculation?
+
+I have renamed them to face_info

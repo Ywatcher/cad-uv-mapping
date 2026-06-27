@@ -12,6 +12,7 @@ find_package(OpenCASCADE CONFIG REQUIRED)
 pybind11_add_module(_native
   cpp/src/bindings.cpp
   cpp/src/occt_io.cpp
+  cpp/src/face_info.cpp
   cpp/src/mapping.cpp
 )
 

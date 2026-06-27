@@ -37,3 +37,6 @@ usually means activating the env before building, or setting `OpenCASCADE_DIR`.
 4. Project each low sample to high faces.
 5. Return deterministic NumPy arrays.
 6. Add normal-map/mask baking helpers in Python.
+
+
+
