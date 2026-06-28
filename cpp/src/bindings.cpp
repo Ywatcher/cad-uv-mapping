@@ -219,6 +219,7 @@ PYBIND11_MODULE(_native, m) {
         .def_readonly("value", &cad_uv_map::IndexedMappingResult::value);
 
     py::class_<cad_uv_map::MappingResultBatch>(m, "MappingResultBatch")
+        .def(py::init<>())
         .def_readonly("results", &cad_uv_map::MappingResultBatch::results)
         .def("to_numpy_low_uv_array", [](const cad_uv_map::MappingResultBatch& value) {
             std::vector<cad_uv_map::UvCoord> coords;
@@ -297,6 +298,7 @@ PYBIND11_MODULE(_native, m) {
         .def_readonly("value", &cad_uv_map::IndexedSurfaceEvalResult::value);
 
     py::class_<cad_uv_map::SurfaceEvalResultBatch>(m, "SurfaceEvalResultBatch")
+        .def(py::init<>())
         .def_readonly("results", &cad_uv_map::SurfaceEvalResultBatch::results)
         .def("to_numpy_uv_array", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
             std::vector<cad_uv_map::UvCoord> coords;
@@ -349,6 +351,7 @@ PYBIND11_MODULE(_native, m) {
         .def_readonly("value", &cad_uv_map::IndexedMappedSampleRecord::value);
 
     py::class_<cad_uv_map::MappedSampleBatch>(m, "MappedSampleBatch")
+        .def(py::init<>())
         .def_readonly("records", &cad_uv_map::MappedSampleBatch::records)
         .def("to_numpy_low_uv_array", [](const cad_uv_map::MappedSampleBatch& value) {
             std::vector<cad_uv_map::UvCoord> coords;

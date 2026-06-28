@@ -96,7 +96,7 @@ class UvCoord:
         return (float(self.u), float(self.v))
 
     def to_numpy(self) -> np.ndarray:
-        return self.to_native().to_numpy()
+        return np.asarray([[float(self.u), float(self.v)]], dtype=np.float64)
 
     def __iter__(self):
         yield self.u
@@ -145,7 +145,7 @@ class Vec3:
         return (float(self.x), float(self.y), float(self.z))
 
     def to_numpy(self) -> np.ndarray:
-        return self.to_native().to_numpy()
+        return np.asarray([[float(self.x), float(self.y), float(self.z)]], dtype=np.float64)
 
     def __iter__(self):
         yield self.x
@@ -188,10 +188,13 @@ class IndexedUvCoord:
         return {"index": int(self.index), "value": self.value.to_python()}
 
     def to_numpy_index_uv(self) -> tuple[np.ndarray, np.ndarray]:
-        return self.to_native().to_numpy_index_uv()
+        return (
+            np.asarray([int(self.index)], dtype=np.int64),
+            self.value.to_numpy(),
+        )
 
     def to_numpy_indexed_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_indexed_uv()
+        return np.asarray([[int(self.index), float(self.value.u), float(self.value.v)]], dtype=np.float64)
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,10 +240,10 @@ class FlatUvSample:
         return {"face_id": int(self.face_id), "uv": self.uv.to_python()}
 
     def to_numpy_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_uv()
+        return self.uv.to_numpy()
 
     def to_numpy_face_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_face_uv()
+        return np.asarray([[float(self.face_id), float(self.uv.u), float(self.uv.v)]], dtype=np.float64)
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,16 +325,21 @@ class FaceUvSampleGroup:
         return {"face_id": int(self.face_id), "samples": [sample.to_python() for sample in self.samples]}
 
     def to_numpy_uv_array(self) -> np.ndarray:
-        return self.to_native().to_numpy_uv_array()
+        return _stack_uv([sample.value for sample in self.samples])
 
     def to_numpy_index_array(self) -> np.ndarray:
-        return self.to_native().to_numpy_index_array()
+        return np.asarray([int(sample.index) for sample in self.samples], dtype=np.int64)
 
     def to_numpy_index_uv_arrays(self) -> tuple[np.ndarray, np.ndarray]:
-        return self.to_native().to_numpy_index_uv_arrays()
+        return self.to_numpy_index_array(), self.to_numpy_uv_array()
 
     def to_numpy_indexed_uv_array(self) -> np.ndarray:
-        return self.to_native().to_numpy_indexed_uv_array()
+        if not self.samples:
+            return np.empty((0, 3), dtype=np.float64)
+        return np.asarray(
+            [(float(sample.index), float(sample.value.u), float(sample.value.v)) for sample in self.samples],
+            dtype=np.float64,
+        )
 
     def __len__(self):
         return len(self.samples)
@@ -551,16 +559,16 @@ class MappingResult:
         }
 
     def to_numpy_low_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_low_uv()
+        return self.low_uv.to_numpy()
 
     def to_numpy_high_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_high_uv()
+        return self.high_uv.to_numpy()
 
     def to_numpy_point(self) -> np.ndarray:
-        return self.to_native().to_numpy_point()
+        return self.point.to_numpy()
 
     def to_numpy_status(self) -> np.ndarray:
-        return self.to_native().to_numpy_status()
+        return np.asarray([int(_native_status_value(self.status))], dtype=np.int32)
 
 
 @dataclass(frozen=True, slots=True)
@@ -770,19 +778,19 @@ class SurfaceEvalResult:
         }
 
     def to_numpy_uv(self) -> np.ndarray:
-        return self.to_native().to_numpy_uv()
+        return self.uv.to_numpy()
 
     def to_numpy_point(self) -> np.ndarray:
-        return self.to_native().to_numpy_point()
+        return self.point.to_numpy()
 
     def to_numpy_normal(self) -> np.ndarray:
-        return self.to_native().to_numpy_normal()
+        return self.normal.to_numpy()
 
     def to_numpy_face_id(self) -> np.ndarray:
-        return self.to_native().to_numpy_face_id()
+        return np.asarray([int(self.face_id)], dtype=np.int32)
 
     def to_numpy_normal_defined(self) -> np.ndarray:
-        return self.to_native().to_numpy_normal_defined()
+        return np.asarray([bool(self.normal_defined)], dtype=bool)
 
 
 @dataclass(frozen=True, slots=True)
