@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from cad_uv_map import describe_shape_faces, map_shape_low_face_samples_to_high_faces  # noqa: E402
+from cad_uv_map import describe_shape_faces, map_shape_single_low_face_samples_to_high_faces  # noqa: E402
 from tests.fixtures.cad_cases import (  # noqa: E402
     flat_to_u_groove_pair,
     flat_to_v_groove_pair,
@@ -60,7 +60,7 @@ def main() -> None:
 
     face_info = low_face_infos[args.low_face_index]
     samples = _sample_uv_grid(face_info, args.u_count, args.v_count, args.margin)
-    batch = map_shape_low_face_samples_to_high_faces(pair.low, pair.high, face_info.face_id, samples)
+    batch = map_shape_single_low_face_samples_to_high_faces(pair.low, pair.high, face_info.face_id, samples)
 
     print(
         f"case={args.case} low_face_id={face_info.face_id} sample_count={len(samples)} result_count={len(batch.results)}",

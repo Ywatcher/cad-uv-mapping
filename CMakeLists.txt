@@ -13,6 +13,12 @@ pybind11_add_module(_native
   cpp/src/bindings.cpp
   cpp/src/occt_io.cpp
   cpp/src/face_info.cpp
+  cpp/src/sample.cpp
+  cpp/src/compat.cpp
+  cpp/src/numpy_exports.cpp
+  cpp/src/projection/mapping_projection.cpp
+  cpp/src/projection/projection_nearest.cpp
+  cpp/src/projection/projection_ray.cpp
   cpp/src/mapping.cpp
 )
 

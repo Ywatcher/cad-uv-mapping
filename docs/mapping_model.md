@@ -20,6 +20,28 @@ For every low-face sample:
 - `normal`: selected world-space high normal.
 - `distance`: projection/ray distance from the low sample.
 
+## Surface Evaluation
+
+This repo uses `surface evaluation` for the step that starts from a selected
+high face and the high-face `(u, v)` recovered during mapping, then asks OCCT
+for the 3D geometry at that parametric location.
+
+Input to surface evaluation:
+
+- `high_face_id`
+- `high_uv`
+
+Output from surface evaluation:
+
+- `position` or `point`: the world-space point on the high face
+- `normal`: the world-space surface normal at that same UV
+- `normal_defined`: whether OCCT could define a normal there
+
+In other words:
+
+- mapping answers "which high face and UV did this low sample land on?"
+- surface evaluation answers "what 3D point and normal live at that high UV?"
+
 ## Why This Shape
 
 The mapping stage is sample-wise because one low face can legitimately map to

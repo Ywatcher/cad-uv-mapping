@@ -45,7 +45,7 @@ The native mapping entry point is the face-first bridge in `cad_uv_map`.
 Current shape:
 
 - Python normalizes input into grouped face samples.
-- C++ maps one low face at a time through `map_low_face_samples_to_high_faces`.
+- C++ maps one low face at a time through `map_single_low_face_samples_to_high_faces`.
 - `MappingContext.enable_parallel` can split a large low-face sample set across
   worker tasks.
 - Output order is preserved by sample index.
@@ -62,6 +62,39 @@ Why this shape matters:
 
 Use this path as the native comparison target against the Python reference
 method.
+
+### Native C++ UV Sampling
+
+The repo also has a native UV sampler in `cpp/src/sample.cpp`.
+
+Current shape:
+
+- Python can request a uniform grid for one face or a batch of face grids.
+- C++ samples the face's OCCT UV bounds and returns grouped samples with stable
+  indices.
+- The output can feed the mapping stage directly without Python rebuilding the
+  grid.
+
+Use this path when you want the sampler itself under test, not just the mapper
+that consumes samples.
+
+### Surface Evaluation Stage
+
+The repo also treats `surface evaluation` as a separate step after mapping.
+It takes the mapped high-face UVs and queries OCCT for:
+
+- the 3D point on the high face
+- the surface normal at that UV
+- whether the normal is defined
+
+This is the stage implemented by:
+
+- `evaluate_single_high_face_samples`
+- `evaluate_multiple_high_face_samples`
+- `map_and_evaluate_multiple_low_face_samples`
+
+Use this stage when you already know the high face and high UV and want the
+geometric result, independent of how the mapping was chosen.
 
 ## Current Comparisons
 

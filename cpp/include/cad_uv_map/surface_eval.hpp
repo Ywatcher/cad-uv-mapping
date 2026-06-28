@@ -4,6 +4,10 @@
 #include <vector>
 
 #include "cad_uv_map/indexed_record.hpp"
+#include "cad_uv_map/mapping.hpp"
+#include "cad_uv_map/sample.hpp"
+
+#include <TopoDS_Face.hxx>
 
 namespace cad_uv_map {
 
@@ -15,16 +19,11 @@ namespace cad_uv_map {
  */
 struct SurfaceEvalResult {
     std::int32_t face_id;
-    double u;
-    double v;
+    UvCoord uv;
 
-    double point_x;
-    double point_y;
-    double point_z;
+    Vec3 point;
 
-    double normal_x;
-    double normal_y;
-    double normal_z;
+    Vec3 normal;
 
     bool normal_defined;
 };
@@ -32,10 +31,28 @@ struct SurfaceEvalResult {
 using IndexedSurfaceEvalResult = IndexedRecord<SurfaceEvalResult>;
 
 /*
- * SurfaceEvalBatch is the batched output from the UV-to-normal stage.
+ * SurfaceEvalResultBatch is the batched output from the UV-to-normal stage.
  */
-struct SurfaceEvalBatch {
+struct SurfaceEvalResultBatch {
     IndexedRecords<SurfaceEvalResult> results;
 };
+
+/*
+ * Public surface evaluation API.
+ *
+ * This is the second stage in the public flow: once a sample has a target
+ * high face and UV pair, these functions recover point and normal data from
+ * OCCT.
+ */
+SurfaceEvalResultBatch evaluate_single_high_face_samples(
+    const TopoDS_Face& high_face,
+    std::int32_t high_face_id,
+    const std::vector<UvCoord>& high_uv_samples,
+    const MappingContext* shared_context = nullptr);
+
+SurfaceEvalResultBatch evaluate_multiple_high_face_samples(
+    const MappingResultBatch& mapping,
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context = nullptr);
 
 } // namespace cad_uv_map

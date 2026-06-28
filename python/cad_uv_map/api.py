@@ -15,6 +15,8 @@ from .conversions import (
 )
 
 MappingContext = _native.MappingContext
+UniformUvGrid = _native.UniformUvGrid
+UniformUvToleranceGrid = _native.UniformUvToleranceGrid
 
 
 @dataclass(frozen=True)
@@ -80,20 +82,87 @@ def debug_print_shape_faces(shape, label: str = "build123d shape") -> None:
 
 
 def debug_print_shape_uv_sample_batch(shape, samples, label: str = "build123d shape + UV samples") -> None:
-    """Print a native shape together with a normalized UV sample batch."""
-    _native.debug_print_brep_uv_sample_batch(shape_to_brep_bytes(shape), normalize_face_uv_samples(samples), label)
+    """Print a native shape together with a native UV sample batch."""
+    _native.debug_print_brep_uv_sample_batch(
+        shape_to_brep_bytes(shape),
+        normalize_face_uv_samples(samples).to_native(),
+        label,
+    )
 
 
 def debug_print_shape_uv_samples(shape, samples, label: str = "build123d shape + UV samples") -> None:
     """Print a native shape together with UV samples accepted in multiple Python forms."""
     _native.debug_print_brep_uv_sample_batch(
         shape_to_brep_bytes(shape),
-        normalize_face_uv_samples(samples),
+        normalize_face_uv_samples(samples).to_native(),
         label,
     )
 
 
-def map_shape_low_face_samples_to_high_faces(
+def sample_shape_face_uniform_uv_grid(shape, face_id: int, u_count: int, v_count: int, margin: float = 0.5):
+    """Generate a grouped uniform UV sample grid for one face."""
+    grid = _native.UniformUvGrid()
+    grid.face_id = int(face_id)
+    grid.u_count = int(u_count)
+    grid.v_count = int(v_count)
+    grid.margin = float(margin)
+    return _native.sample_brep_face_uniform_uv_grid(shape_to_brep_bytes(shape), grid)
+
+
+def sample_shape_face_uniform_uv_grid_batch(shape, grids):
+    """Generate grouped uniform UV sample grids for multiple faces."""
+    native_grids = []
+    for grid in grids:
+        if isinstance(grid, _native.UniformUvGrid):
+            native_grids.append(grid)
+            continue
+        native_grid = _native.UniformUvGrid()
+        if hasattr(grid, "face_id"):
+            native_grid.face_id = int(grid.face_id)
+            native_grid.u_count = int(grid.u_count)
+            native_grid.v_count = int(grid.v_count)
+            native_grid.margin = float(grid.margin)
+        else:
+            face_id, u_count, v_count, margin = grid
+            native_grid.face_id = int(face_id)
+            native_grid.u_count = int(u_count)
+            native_grid.v_count = int(v_count)
+            native_grid.margin = float(margin)
+        native_grids.append(native_grid)
+    return _native.sample_brep_face_uniform_uv_grid_batch(shape_to_brep_bytes(shape), native_grids)
+
+
+def sample_shape_face_uniform_uv_tolerance_grid(shape, face_id: int, tolerance: float, margin: float = 0.5):
+    """Generate a grouped uniform UV sample grid for one face from a tolerance value."""
+    grid = _native.UniformUvToleranceGrid()
+    grid.face_id = int(face_id)
+    grid.tolerance = float(tolerance)
+    grid.margin = float(margin)
+    return _native.sample_brep_face_uniform_uv_tolerance_grid(shape_to_brep_bytes(shape), grid)
+
+
+def sample_shape_face_uniform_uv_tolerance_grid_batch(shape, grids):
+    """Generate grouped tolerance-driven UV sample grids for multiple faces."""
+    native_grids = []
+    for grid in grids:
+        if isinstance(grid, _native.UniformUvToleranceGrid):
+            native_grids.append(grid)
+            continue
+        native_grid = _native.UniformUvToleranceGrid()
+        if hasattr(grid, "face_id"):
+            native_grid.face_id = int(grid.face_id)
+            native_grid.tolerance = float(grid.tolerance)
+            native_grid.margin = float(grid.margin)
+        else:
+            face_id, tolerance, margin = grid
+            native_grid.face_id = int(face_id)
+            native_grid.tolerance = float(tolerance)
+            native_grid.margin = float(margin)
+        native_grids.append(native_grid)
+    return _native.sample_brep_face_uniform_uv_tolerance_grid_batch(shape_to_brep_bytes(shape), native_grids)
+
+
+def map_shape_single_low_face_samples_to_high_faces_nearest(
     low_shape,
     high_shape,
     low_face_id: int,
@@ -101,7 +170,7 @@ def map_shape_low_face_samples_to_high_faces(
     shared_context=None,
 ):
     """Map UV samples on one low face to nearest high faces."""
-    return _native.map_brep_low_face_samples_to_high_faces(
+    return _native.map_brep_single_low_face_samples_to_high_faces_nearest(
         shape_to_brep_bytes(low_shape),
         shape_to_brep_bytes(high_shape),
         int(low_face_id),
@@ -110,7 +179,41 @@ def map_shape_low_face_samples_to_high_faces(
     )
 
 
-def map_shape_low_face_uv_grid_to_high_face_uv_grid(
+def map_shape_single_low_face_samples_to_high_faces_ray(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_samples,
+    shared_context=None,
+):
+    """Map UV samples on one low face along the low-face normal rays."""
+    return _native.map_brep_single_low_face_samples_to_high_faces_ray(
+        shape_to_brep_bytes(low_shape),
+        shape_to_brep_bytes(high_shape),
+        int(low_face_id),
+        to_native_uv_coords(low_uv_samples),
+        shared_context,
+    )
+
+
+def map_shape_single_low_face_samples_to_high_faces(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_samples,
+    shared_context=None,
+):
+    """Compatibility alias for nearest-surface mapping."""
+    return map_shape_single_low_face_samples_to_high_faces_nearest(
+        low_shape,
+        high_shape,
+        low_face_id,
+        low_uv_samples,
+        shared_context,
+    )
+
+
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(
     low_shape,
     high_shape,
     low_face_id: int,
@@ -130,7 +233,7 @@ def map_shape_low_face_uv_grid_to_high_face_uv_grid(
         grid_shape = low_uv_grid_array.shape[:-1]
         flat_uvs = low_uv_grid_array.reshape(-1, 2).tolist()
 
-    batch = _native.map_brep_low_face_samples_to_high_faces(
+    batch = _native.map_brep_single_low_face_samples_to_high_faces_nearest(
         shape_to_brep_bytes(low_shape),
         shape_to_brep_bytes(high_shape),
         int(low_face_id),
@@ -140,19 +243,66 @@ def map_shape_low_face_uv_grid_to_high_face_uv_grid(
     return mapping_batch_to_numpy_grid(batch, grid_shape)
 
 
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_grid,
+    shared_context=None,
+):
+    """Map a UV grid with the ray method to a structured NumPy grid."""
+    low_uv_grid_array = np.asarray(low_uv_grid, dtype=np.float64)
+    if low_uv_grid_array.ndim == 1:
+        if low_uv_grid_array.shape[0] != 2:
+            raise ValueError("low_uv_grid must end with a UV pair")
+        grid_shape = ()
+        flat_uvs = [tuple(low_uv_grid_array.tolist())]
+    else:
+        if low_uv_grid_array.shape[-1] != 2:
+            raise ValueError("low_uv_grid must have a trailing dimension of size 2")
+        grid_shape = low_uv_grid_array.shape[:-1]
+        flat_uvs = low_uv_grid_array.reshape(-1, 2).tolist()
+
+    batch = _native.map_brep_single_low_face_samples_to_high_faces_ray(
+        shape_to_brep_bytes(low_shape),
+        shape_to_brep_bytes(high_shape),
+        int(low_face_id),
+        to_native_uv_coords(flat_uvs),
+        shared_context,
+    )
+    return mapping_batch_to_numpy_grid(batch, grid_shape)
+
+
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid(
+    low_shape,
+    high_shape,
+    low_face_id: int,
+    low_uv_grid,
+    shared_context=None,
+):
+    """Compatibility alias for nearest-surface UV grid mapping."""
+    return map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(
+        low_shape,
+        high_shape,
+        low_face_id,
+        low_uv_grid,
+        shared_context,
+    )
+
+
 def mapping_batch_to_numpy_structured_array(batch):
-    """Convert a native MappingBatch into a flat structured NumPy array."""
+    """Convert a native MappingResultBatch into a flat structured NumPy array."""
     return mapping_batch_to_structured_array(batch)
 
 
-def evaluate_shape_high_face_samples(
+def evaluate_shape_single_high_face_samples(
     high_shape,
     high_face_id: int,
     high_uv_samples,
     shared_context=None,
 ):
     """Evaluate point and normal data for UV samples on one high face."""
-    return _native.evaluate_brep_high_face_samples(
+    return _native.evaluate_brep_single_high_face_samples(
         shape_to_brep_bytes(high_shape),
         int(high_face_id),
         to_native_uv_coords(high_uv_samples),
@@ -160,21 +310,21 @@ def evaluate_shape_high_face_samples(
     )
 
 
-def evaluate_shape_mapped_high_uvs(high_shape, mapping, shared_context=None):
+def evaluate_shape_multiple_high_face_samples(high_shape, mapping, shared_context=None):
     """Evaluate a mapping batch against a high shape and return point/normal data."""
-    return _native.evaluate_brep_mapped_high_uvs(shape_to_brep_bytes(high_shape), mapping, shared_context)
+    return _native.evaluate_brep_multiple_high_face_samples(shape_to_brep_bytes(high_shape), mapping, shared_context)
 
 
-def map_and_evaluate_shape_samples(
+def map_and_evaluate_shape_multiple_low_face_samples(
     low_shape,
     high_shape,
     low_face_samples,
     shared_context=None,
 ):
     """Run the low-sample to mapping to surface-eval pipeline in one call."""
-    return _native.map_and_evaluate_brep_samples(
+    return _native.map_and_evaluate_brep_multiple_low_face_samples(
         shape_to_brep_bytes(low_shape),
         shape_to_brep_bytes(high_shape),
-        normalize_face_uv_samples(low_face_samples),
+        normalize_face_uv_samples(low_face_samples).to_native(),
         shared_context,
     )

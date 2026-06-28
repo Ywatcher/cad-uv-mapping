@@ -1,3 +1,24 @@
+from .types import (
+    FaceUvSampleGroup,
+    FaceUvSampleGroupBatch,
+    FlatUvSample,
+    IndexedFaceUvSampleGroup,
+    IndexedFlatUvSample,
+    IndexedMappingResult,
+    IndexedMappedSampleRecord,
+    IndexedSurfaceEvalResult,
+    IndexedUvCoord,
+    MappedSampleBatch,
+    MappedSampleRecord,
+    MappingResult,
+    MappingResultBatch,
+    SurfaceEvalResult,
+    SurfaceEvalResultBatch,
+    UvCoord,
+    Vec3,
+)
+
+
 def describe_brep_faces(*args, **kwargs):
     from .api import describe_brep_faces as _describe_brep_faces
 
@@ -70,37 +91,102 @@ def debug_print_shape_uv_samples(*args, **kwargs):
     return _debug_print_shape_uv_samples(*args, **kwargs)
 
 
-def map_shape_low_face_samples_to_high_faces(*args, **kwargs):
-    from .api import map_shape_low_face_samples_to_high_faces as _map_shape_low_face_samples_to_high_faces
+def sample_shape_face_uniform_uv_grid(*args, **kwargs):
+    from .api import sample_shape_face_uniform_uv_grid as _sample_shape_face_uniform_uv_grid
 
-    return _map_shape_low_face_samples_to_high_faces(*args, **kwargs)
-
-
-def map_shape_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs):
-    from .api import map_shape_low_face_uv_grid_to_high_face_uv_grid as _map_shape_low_face_uv_grid_to_high_face_uv_grid
-
-    return _map_shape_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs)
+    return _sample_shape_face_uniform_uv_grid(*args, **kwargs)
 
 
-def evaluate_shape_high_face_samples(*args, **kwargs):
-    from .api import evaluate_shape_high_face_samples as _evaluate_shape_high_face_samples
+def sample_shape_face_uniform_uv_grid_batch(*args, **kwargs):
+    from .api import sample_shape_face_uniform_uv_grid_batch as _sample_shape_face_uniform_uv_grid_batch
 
-    return _evaluate_shape_high_face_samples(*args, **kwargs)
-
-
-def evaluate_shape_mapped_high_uvs(*args, **kwargs):
-    from .api import evaluate_shape_mapped_high_uvs as _evaluate_shape_mapped_high_uvs
-
-    return _evaluate_shape_mapped_high_uvs(*args, **kwargs)
+    return _sample_shape_face_uniform_uv_grid_batch(*args, **kwargs)
 
 
-def map_and_evaluate_shape_samples(*args, **kwargs):
-    from .api import map_and_evaluate_shape_samples as _map_and_evaluate_shape_samples
+def sample_shape_face_uniform_uv_tolerance_grid(*args, **kwargs):
+    from .api import sample_shape_face_uniform_uv_tolerance_grid as _sample_shape_face_uniform_uv_tolerance_grid
 
-    return _map_and_evaluate_shape_samples(*args, **kwargs)
+    return _sample_shape_face_uniform_uv_tolerance_grid(*args, **kwargs)
+
+
+def sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs):
+    from .api import sample_shape_face_uniform_uv_tolerance_grid_batch as _sample_shape_face_uniform_uv_tolerance_grid_batch
+
+    return _sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs)
+
+
+def map_shape_single_low_face_samples_to_high_faces(*args, **kwargs):
+    from .api import map_shape_single_low_face_samples_to_high_faces as _map_shape_single_low_face_samples_to_high_faces
+
+    return _map_shape_single_low_face_samples_to_high_faces(*args, **kwargs)
+
+
+def map_shape_single_low_face_samples_to_high_faces_nearest(*args, **kwargs):
+    from .api import map_shape_single_low_face_samples_to_high_faces_nearest as _map_shape_single_low_face_samples_to_high_faces_nearest
+
+    return _map_shape_single_low_face_samples_to_high_faces_nearest(*args, **kwargs)
+
+
+def map_shape_single_low_face_samples_to_high_faces_ray(*args, **kwargs):
+    from .api import map_shape_single_low_face_samples_to_high_faces_ray as _map_shape_single_low_face_samples_to_high_faces_ray
+
+    return _map_shape_single_low_face_samples_to_high_faces_ray(*args, **kwargs)
+
+
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs):
+    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid
+
+    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs)
+
+
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(*args, **kwargs):
+    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest
+
+    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(*args, **kwargs)
+
+
+def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(*args, **kwargs):
+    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray
+
+    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(*args, **kwargs)
+
+
+def evaluate_shape_single_high_face_samples(*args, **kwargs):
+    from .api import evaluate_shape_single_high_face_samples as _evaluate_shape_single_high_face_samples
+
+    return _evaluate_shape_single_high_face_samples(*args, **kwargs)
+
+
+def evaluate_shape_multiple_high_face_samples(*args, **kwargs):
+    from .api import evaluate_shape_multiple_high_face_samples as _evaluate_shape_multiple_high_face_samples
+
+    return _evaluate_shape_multiple_high_face_samples(*args, **kwargs)
+
+
+def map_and_evaluate_shape_multiple_low_face_samples(*args, **kwargs):
+    from .api import map_and_evaluate_shape_multiple_low_face_samples as _map_and_evaluate_shape_multiple_low_face_samples
+
+    return _map_and_evaluate_shape_multiple_low_face_samples(*args, **kwargs)
 
 
 __all__ = [
+    "UvCoord",
+    "Vec3",
+    "IndexedUvCoord",
+    "FlatUvSample",
+    "IndexedFlatUvSample",
+    "FaceUvSampleGroup",
+    "IndexedFaceUvSampleGroup",
+    "FaceUvSampleGroupBatch",
+    "MappingResult",
+    "IndexedMappingResult",
+    "MappingResultBatch",
+    "SurfaceEvalResult",
+    "IndexedSurfaceEvalResult",
+    "SurfaceEvalResultBatch",
+    "MappedSampleRecord",
+    "IndexedMappedSampleRecord",
+    "MappedSampleBatch",
     "describe_brep_faces",
     "describe_shape_faces",
     "debug_print_brep_faces",
@@ -113,9 +199,17 @@ __all__ = [
     "mapping_batch_to_numpy_grid",
     "debug_print_shape_uv_sample_batch",
     "debug_print_shape_uv_samples",
-    "map_shape_low_face_samples_to_high_faces",
-    "map_shape_low_face_uv_grid_to_high_face_uv_grid",
-    "evaluate_shape_high_face_samples",
-    "evaluate_shape_mapped_high_uvs",
-    "map_and_evaluate_shape_samples",
+    "sample_shape_face_uniform_uv_grid",
+    "sample_shape_face_uniform_uv_grid_batch",
+    "sample_shape_face_uniform_uv_tolerance_grid",
+    "sample_shape_face_uniform_uv_tolerance_grid_batch",
+    "map_shape_single_low_face_samples_to_high_faces",
+    "map_shape_single_low_face_samples_to_high_faces_nearest",
+    "map_shape_single_low_face_samples_to_high_faces_ray",
+    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid",
+    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest",
+    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray",
+    "evaluate_shape_single_high_face_samples",
+    "evaluate_shape_multiple_high_face_samples",
+    "map_and_evaluate_shape_multiple_low_face_samples",
 ]

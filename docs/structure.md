@@ -99,6 +99,7 @@ Purpose:
 ### Native C++ Side
 
 - `cpp/src/bindings.cpp`
+- `cpp/src/sample.cpp`
 - `cpp/src/mapping.cpp`
 - `cpp/src/face_info.cpp`
 - `cpp/src/occt_io.cpp`
@@ -108,15 +109,16 @@ Headers:
 - `cpp/include/cad_uv_map/indexed_record.hpp`
 - `cpp/include/cad_uv_map/mapping.hpp`
 - `cpp/include/cad_uv_map/mapping_context.hpp`
-- `cpp/include/cad_uv_map/mapping_types.hpp`
 - `cpp/include/cad_uv_map/sample.hpp`
 - `cpp/include/cad_uv_map/surface_eval.hpp`
+- `cpp/include/cad_uv_map/pipeline.hpp`
 - `cpp/include/cad_uv_map/face_info.hpp`
 - `cpp/include/cad_uv_map/occt_io.hpp`
 
 Purpose:
 
 - `bindings.cpp` exposes the native module to Python
+- `sample.cpp` generates grouped UV sample grids from OCCT faces
 - `occt_io.cpp` reads BREP bytes/files and extracts faces
 - `face_info.cpp` prints and describes face metadata for debug use
 - `mapping.cpp` is the mapping layer skeleton and future core algorithm home
@@ -127,7 +129,7 @@ Purpose:
 
 The current intended execution order is:
 
-1. Python prepares a low-face sample request or test fixture.
+1. Python prepares a low-face sample request, or C++ generates a uniform UV grid.
 2. Python converts the shape to BREP bytes when needed.
 3. `bindings.cpp` receives the bytes and forwards them to native code.
 4. `occt_io.cpp` reconstructs the OCCT shape and collects faces.
