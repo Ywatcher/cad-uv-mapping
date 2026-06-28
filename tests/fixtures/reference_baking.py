@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.fixtures.cad_cases import flat_to_u_groove_pair, flat_to_v_groove_pair, pedestal_ribs_pair
+from tests.fixtures.cad_cases import flat_to_u_groove_pair, flat_to_v_groove_pair, pedestal_ribs_nofold_pair, pedestal_ribs_pair
 from tests.fixtures.reference_mapping import nearest_reference_hits, sample_face_uv_grid
 
 
@@ -12,6 +12,7 @@ CASE_FACTORIES = {
     "flat_to_u_groove": flat_to_u_groove_pair,
     "flat_to_v_groove": flat_to_v_groove_pair,
     "pedestal_ribs": pedestal_ribs_pair,
+    "pedestal_ribs_nofold": pedestal_ribs_nofold_pair,
 }
 
 
@@ -49,7 +50,7 @@ def bake_reference_normal_map(
     """Bake a deterministic reference normal map and ground-truth arrays.
 
     The cuboid cases use the slow nearest-surface OCP reference mapper. The
-    pedestal case uses a synthetic raised-rib oracle with the same UV convention
+    pedestal cases use a synthetic raised-rib oracle with the same UV convention
     as the preview shader: U is increasing theta and V is increasing height.
     """
     try:
@@ -58,7 +59,7 @@ def bake_reference_normal_map(
         raise ValueError(f"unknown case {case!r}; expected one of {sorted(CASE_FACTORIES)}") from exc
 
     pair = pair_factory()
-    if case == "pedestal_ribs":
+    if case in {"pedestal_ribs", "pedestal_ribs_nofold"}:
         return bake_pedestal_reference_normal_map(width=width, height=height)
 
     low_faces = pair.low.faces()

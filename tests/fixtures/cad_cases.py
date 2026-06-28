@@ -140,6 +140,40 @@ class HighResRibbedPedestal(Compound):
         super().__init__(ribbed.wrapped)
 
 
+class HighResRibbedPedestalNoFold(Compound):
+    def __init__(self):
+        base_pedestal = LowResPedestal()
+
+        # This variant keeps the ribbed pedestal silhouette but removes the
+        # offset loop that introduced an undercut fold in the earlier fixture.
+        # The rib follows the exact pedestal side curve and uses a small circular
+        # profile, so projection samples should see a single outward-facing value.
+        rib_offset = 0.12
+        rib_profile_radius = 0.22
+        with BuildPart() as single_rib:
+            with BuildLine(Plane.XZ) as rib_path:
+                ThreePointArc(
+                    (10.0, 0.0),
+                    (6.0, 7.5),
+                    (5.0, 15.0),
+                )
+            with BuildSketch(Plane.YZ.offset(10.0 + rib_offset)):
+                Circle(rib_profile_radius)
+            sweep(path=rib_path.line)
+
+        rib_clip = Box(24.0, 24.0, 15.0).translate((0.0, 0.0, 7.5))
+        ribs = [
+            single_rib.part.rotate(Axis.Z, i * (360.0 / 16)) & rib_clip
+            for i in range(16)
+        ]
+        with BuildPart() as ribbed_builder:
+            add(base_pedestal)
+            add(ribs)
+
+        ribbed = ribbed_builder.part
+        super().__init__(ribbed.wrapped)
+
+
 def identity_box_pair() -> CadPair:
     low = LowResCuboid()
     high = LowResCuboid()
@@ -158,12 +192,17 @@ def pedestal_ribs_pair() -> CadPair:
     return CadPair("pedestal_ribs", LowResPedestal(), HighResRibbedPedestal())
 
 
+def pedestal_ribs_nofold_pair() -> CadPair:
+    return CadPair("pedestal_ribs_nofold", LowResPedestal(), HighResRibbedPedestalNoFold())
+
+
 def all_pairs() -> list[CadPair]:
     return [
         identity_box_pair(),
         flat_to_u_groove_pair(),
         flat_to_v_groove_pair(),
         pedestal_ribs_pair(),
+        pedestal_ribs_nofold_pair(),
     ]
 
 
