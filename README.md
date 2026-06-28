@@ -29,6 +29,30 @@ Use the same conda environment as the Panda3D CAD experiments:
 You need OpenCascade headers/libraries visible to CMake. In conda environments this
 usually means activating the env before building, or setting `OpenCASCADE_DIR`.
 
+## Current Features
+
+The native pipeline currently provides:
+
+1. UV sampling on OCCT faces, including grouped batches and deterministic sample indices.
+2. Low-to-high UV mapping, with nearest-surface and ray-based projection paths.
+3. High-face surface evaluation, returning point, normal, and normal-defined flags.
+4. BREP bytes/file loading and face extraction for Python-to-C++ bridging.
+5. NumPy-friendly result containers and structured exports for tests, notebooks, and rendering.
+6. Notebook and debug helpers for inspecting faces, samples, mapping results, and evaluation output.
+
+These pieces are already enough to drive rendering-oriented workflows such as normal-map baking and other per-sample surface queries.
+
+## Future Work
+
+Planned follow-up work includes:
+
+1. Handle the fold / hangover edge case more robustly.
+2. Explore an outer-envelope or one-sided cage prepass for ambiguous folds.
+3. Add bent normal outputs for shading-oriented consumers.
+4. Add ambient occlusion outputs for shading and visibility hints.
+5. Expand the projection policy when a single low-face sample can plausibly map to multiple high-face regions.
+6. Split additional preprocessing or atlas/baking utilities into their own modules if those workflows grow.
+
 ## First Milestones
 
 1. Build/import the native module.
