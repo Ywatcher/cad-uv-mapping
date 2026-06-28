@@ -153,6 +153,34 @@ def test_native_uniform_uv_sampler_generates_face_group_in_cpp():
     assert np.allclose(np.array(actual), np.array(expected))
 
 
+def test_native_shape_like_inputs_accept_face_lists_for_sampling_and_mapping():
+    pair = identity_box_pair()
+    low_faces = list(pair.low.faces())
+    high_faces = list(pair.high.faces())
+
+    face_info = describe_shape_faces(low_faces)
+    assert len(face_info) == len(low_faces)
+
+    low_face = face_info[0]
+    samples = _sample_uv_grid(low_faces[0], 2, 2)
+    context = MappingContext()
+    context.enable_parallel = True
+
+    group = sample_shape_face_uniform_uv_grid(low_faces, low_face.face_id, 2, 2, 0.5)
+    assert group.face_id == low_face.face_id
+    assert len(group.samples) == 4
+
+    batch = map_shape_single_low_face_samples_to_high_faces_nearest(
+        low_faces,
+        high_faces,
+        low_face.face_id,
+        samples,
+        context,
+    )
+    assert len(batch.results) == len(samples)
+    assert all(result.value.low_face_id == low_face.face_id for result in batch.results)
+
+
 def test_native_uniform_uv_tolerance_sampler_generates_face_group_in_cpp():
     pair = identity_box_pair()
     low_face = describe_shape_faces(pair.low)[0]
@@ -211,6 +239,21 @@ def test_native_high_face_normal_evaluation_and_full_pipeline_smoke():
     assert combined_batch.to_numpy_point_array().shape == (len(samples), 3)
     assert combined_batch.to_numpy_normal_array().shape == (len(samples), 3)
     assert combined_batch.to_numpy_status_array().shape == (len(samples),)
+
+
+def test_native_high_face_evaluation_accepts_numpy_uv_arrays():
+    pair = identity_box_pair()
+    low_face = describe_shape_faces(pair.low)[0]
+    uv_array = np.array([[0.25, 0.25], [0.75, 0.75]], dtype=np.float64)
+
+    native_surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, uv_array)
+    surface_batch = SurfaceEvalResultBatch.from_native(native_surface_batch)
+
+    assert len(surface_batch.results) == 2
+    assert surface_batch.to_numpy_uv_array().shape == (2, 2)
+    assert surface_batch.to_numpy_point_array().shape == (2, 3)
+    assert surface_batch.to_numpy_normal_array().shape == (2, 3)
+    assert surface_batch.to_numpy_normal_defined_mask().shape == (2,)
 
 
 def test_native_ray_mapping_smoke_on_ribbed_pedestal():

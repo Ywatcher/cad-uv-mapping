@@ -25,6 +25,12 @@ def describe_brep_faces(*args, **kwargs):
     return _describe_brep_faces(*args, **kwargs)
 
 
+def shape_to_brep_bytes(*args, **kwargs):
+    from .api import shape_to_brep_bytes as _shape_to_brep_bytes
+
+    return _shape_to_brep_bytes(*args, **kwargs)
+
+
 def debug_print_brep_faces(*args, **kwargs):
     from .api import debug_print_brep_faces as _debug_print_brep_faces
 
@@ -189,6 +195,7 @@ __all__ = [
     "MappedSampleBatch",
     "describe_brep_faces",
     "describe_shape_faces",
+    "shape_to_brep_bytes",
     "debug_print_brep_faces",
     "debug_print_shape_faces",
     "normalize_face_uv_samples",

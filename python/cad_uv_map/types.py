@@ -441,6 +441,7 @@ class FaceUvSampleGroupBatch:
         return cls([FaceUvSampleGroup.from_native(group) for group in value.faces])
 
     def to_native(self):
+        """Convert to native `_native.FaceUvSampleGroupBatch`."""
         native = _native.FaceUvSampleGroupBatch()
         native.faces = [group.to_native() for group in self.faces]
         return native
@@ -639,6 +640,7 @@ class MappingResultBatch:
         return cls([IndexedMappingResult.from_native(result) for result in value.results])
 
     def to_native(self):
+        """Convert to native `_native.MappingResultBatch`."""
         native = _native.MappingResultBatch()
         native.results = [result.to_native() for result in self.results]
         return native
@@ -842,6 +844,7 @@ class SurfaceEvalResultBatch:
         return cls([IndexedSurfaceEvalResult.from_native(result) for result in value.results])
 
     def to_native(self):
+        """Convert to native `_native.SurfaceEvalResultBatch`."""
         native = _native.SurfaceEvalResultBatch()
         native.results = [result.to_native() for result in self.results]
         return native
@@ -982,6 +985,7 @@ class MappedSampleBatch:
         return cls([IndexedMappedSampleRecord.from_native(record) for record in value.records])
 
     def to_native(self):
+        """Convert to native `_native.MappedSampleBatch`."""
         native = _native.MappedSampleBatch()
         native.records = [record.to_native() for record in self.records]
         return native

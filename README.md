@@ -42,6 +42,13 @@ The native pipeline currently provides:
 
 These pieces are already enough to drive rendering-oriented workflows such as normal-map baking and other per-sample surface queries.
 
+## Docs
+
+- [API reference](docs/api_reference.md): step APIs, arguments, return values,
+  and the matching native entry points.
+- [Module structure](docs/structure.md): file layout and runtime order.
+- [Test flows](docs/test_flows.md): reference methods and comparison paths.
+
 ## Future Work
 
 Planned follow-up work includes:
@@ -61,6 +68,5 @@ Planned follow-up work includes:
 4. Project each low sample to high faces.
 5. Return deterministic NumPy arrays.
 6. Add normal-map/mask baking helpers in Python.
-
 
 

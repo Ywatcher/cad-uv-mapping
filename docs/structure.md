@@ -85,6 +85,8 @@ OpenCASCADE (OCCT)
 
 ## Current Module Structure
 
+For a step-by-step API map, see [API reference](api_reference.md).
+
 ### Python Side
 
 - `python/cad_uv_map/__init__.py`
