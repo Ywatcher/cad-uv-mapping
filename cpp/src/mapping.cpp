@@ -285,9 +285,11 @@ MappingResultBatch map_multiple_low_face_sample_groups_to_high_faces(
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
     const MappingContext* shared_context) {
-    MappingResultBatch batch;
+    std::vector<MappingResultBatch> group_batches(low_face_samples.faces.size());
+    const bool use_parallel = shared_context != nullptr && shared_context->enable_parallel && low_face_samples.faces.size() > 1;
 
-    for (const FaceUvSampleGroup& group : low_face_samples.faces) {
+    auto map_group = [&](std::size_t group_index) {
+        const FaceUvSampleGroup& group = low_face_samples.faces[group_index];
         if (group.face_id < 0 || group.face_id >= static_cast<std::int32_t>(low_faces.size())) {
             throw std::out_of_range("sample group face_id is outside the low face list");
         }
@@ -307,6 +309,30 @@ MappingResultBatch map_multiple_low_face_sample_groups_to_high_faces(
             high_faces,
             shared_context);
 
+        group_batches[group_index] = std::move(group_batch);
+    };
+
+    if (use_parallel) {
+        std::vector<std::future<void>> futures;
+        futures.reserve(low_face_samples.faces.size());
+        for (std::size_t group_index = 0; group_index < low_face_samples.faces.size(); ++group_index) {
+            futures.push_back(std::async(std::launch::async, [&, group_index]() {
+                map_group(group_index);
+            }));
+        }
+        for (std::future<void>& future : futures) {
+            future.get();
+        }
+    } else {
+        for (std::size_t group_index = 0; group_index < low_face_samples.faces.size(); ++group_index) {
+            map_group(group_index);
+        }
+    }
+
+    MappingResultBatch batch;
+    for (std::size_t group_index = 0; group_index < low_face_samples.faces.size(); ++group_index) {
+        const FaceUvSampleGroup& group = low_face_samples.faces[group_index];
+        const MappingResultBatch& group_batch = group_batches[group_index];
         for (std::size_t local_index = 0; local_index < group_batch.results.size(); ++local_index) {
             IndexedMappingResult result = group_batch.results[local_index];
             result.index = group.samples[local_index].index;
