@@ -5,11 +5,11 @@ from cad_uv_map import (
     MappingMethod,
     MappingStatus,
     describe_shape_faces,
-    evaluate_shape_multiple_high_face_samples,
-    evaluate_shape_single_high_face_samples,
-    map,
-    map_and_evaluate_shape_multiple_low_face_samples,
-    map_grid,
+    evaluate_multiple_face_samples,
+    evaluate_single_face_samples,
+    map_and_evaluate_source_samples_to_target,
+    map_source_samples_to_target,
+    map_source_uv_grid_to_target,
     mapping_batch_to_structured_array,
     normalize_face_uv_samples,
     sample_shape_face_uniform_uv_grid,
@@ -41,7 +41,7 @@ def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits(
     context = MappingContext()
     context.enable_parallel = True
 
-    batch = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    batch = map_source_samples_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
 
     assert len(batch) == len(samples)
     assert batch.index.tolist() == list(range(len(samples)))
@@ -59,7 +59,7 @@ def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
     context = MappingContext()
     context.enable_parallel = True
 
-    mapped = map_grid(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    mapped = map_source_uv_grid_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
 
     assert mapped.shape == (2, 2)
     assert mapped.dtype.names == ("high_face_id", "high_u", "high_v")
@@ -92,7 +92,7 @@ def test_python_conversion_helpers_keep_grouped_face_samples_and_columnar_batche
     samples = _sample_uv_grid(low_face, 1, 2)
     context = MappingContext()
     context.enable_parallel = True
-    mapping = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    mapping = map_source_samples_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
 
     # Columnar per-field access.
     assert mapping.high_uv.shape == (len(samples), 2)
@@ -151,7 +151,7 @@ def test_native_shape_like_inputs_accept_face_lists_for_sampling_and_mapping():
     assert group.face_id == low_face.face_id
     assert len(group.samples) == 4
 
-    batch = map(low_faces, high_faces, low_face.face_id, samples, MappingMethod.nearest, context)
+    batch = map_source_samples_to_target(low_faces, high_faces, low_face.face_id, samples, MappingMethod.nearest, context)
     assert len(batch) == len(samples)
     assert np.all(batch.low_face_id == low_face.face_id)
 
@@ -174,7 +174,7 @@ def test_native_high_face_normal_evaluation_and_full_pipeline_smoke():
     context = MappingContext()
     context.enable_parallel = True
 
-    surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, samples, context)
+    surface_batch = evaluate_single_face_samples(pair.high, low_face.face_id, samples, context)
     assert len(surface_batch) == len(samples)
     assert np.all(surface_batch.normal_defined)
     assert surface_batch.uv.shape == (len(samples), 2)
@@ -182,14 +182,14 @@ def test_native_high_face_normal_evaluation_and_full_pipeline_smoke():
     assert surface_batch.point.shape == (len(samples), 3)
     assert surface_batch.normal_defined.shape == (len(samples),)
 
-    mapping_batch = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
-    mapped_surface_batch = evaluate_shape_multiple_high_face_samples(pair.high, mapping_batch)
+    mapping_batch = map_source_samples_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    mapped_surface_batch = evaluate_multiple_face_samples(pair.high, mapping_batch)
     assert len(mapped_surface_batch) == len(samples)
     assert np.all(mapped_surface_batch.normal_defined)
 
     low_face_batch = normalize_face_uv_samples({low_face.face_id: samples})
 
-    combined = map_and_evaluate_shape_multiple_low_face_samples(
+    combined = map_and_evaluate_source_samples_to_target(
         pair.low, pair.high, low_face_batch, MappingMethod.nearest, context
     )
     assert len(combined) == len(samples)
@@ -208,7 +208,7 @@ def test_native_high_face_evaluation_accepts_numpy_uv_arrays():
     low_face = describe_shape_faces(pair.low)[0]
     uv_array = np.array([[0.25, 0.25], [0.75, 0.75]], dtype=np.float64)
 
-    surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, uv_array)
+    surface_batch = evaluate_single_face_samples(pair.high, low_face.face_id, uv_array)
 
     assert len(surface_batch) == 2
     assert surface_batch.uv.shape == (2, 2)
@@ -232,8 +232,8 @@ def test_merged_method_arg_routes_to_separate_cpp_impls_on_pedestal():
     context = MappingContext()
     context.enable_parallel = True
 
-    nearest = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
-    ray = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.ray, context)
+    nearest = map_source_samples_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    ray = map_source_samples_to_target(pair.low, pair.high, low_face.face_id, samples, MappingMethod.ray, context)
 
     assert len(nearest) == len(samples)
     assert len(ray) == len(samples)

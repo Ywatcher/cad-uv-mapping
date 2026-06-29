@@ -293,62 +293,69 @@ def sample_shape_face_uniform_uv_tolerance_grid_batch(
     return _native.sample_brep_face_uniform_uv_tolerance_grid_batch(shape_to_brep_bytes(shape), native_grids)
 
 
-def map(
-    low_shape: ShapeInput,
-    high_shape: ShapeInput,
-    low_face_id: int,
-    low_uv_samples: Any,
+def map_source_samples_to_target(
+    source_shape: ShapeInput,
+    target_shape: ShapeInput,
+    source_face_id: int,
+    source_uv_samples: Any,
     method: "_native.MappingMethod" = None,
     shared_context: Any = None,
 ) -> MappingResultBatch:
-    """Map UV samples on one low face to high faces, using the selected method.
+    """Map UV samples on one source face to target faces, using the selected method.
 
     `method` selects the projection strategy (`MappingMethod.nearest`, the
-    default, or `MappingMethod.ray`). `low_uv_samples` may be a Python sequence,
+    default, or `MappingMethod.ray`). `source_uv_samples` may be a Python sequence,
     a NumPy UV array, or any native UV sample container accepted by
     `to_native_uv_coords`. Returns a columnar `MappingResultBatch`.
     """
     if method is None:
         method = _native.MappingMethod.nearest
     native = _native.map_brep_single_low_face_samples_to_high_faces(
-        shape_to_brep_bytes(low_shape),
-        shape_to_brep_bytes(high_shape),
-        int(low_face_id),
-        to_native_uv_coords(low_uv_samples),
+        shape_to_brep_bytes(source_shape),
+        shape_to_brep_bytes(target_shape),
+        int(source_face_id),
+        to_native_uv_coords(source_uv_samples),
         method,
         shared_context,
     )
     return MappingResultBatch.from_native(native)
 
 
-def map_grid(
-    low_shape: ShapeInput,
-    high_shape: ShapeInput,
-    low_face_id: int,
-    low_uv_grid: Any,
+def map_source_uv_grid_to_target(
+    source_shape: ShapeInput,
+    target_shape: ShapeInput,
+    source_face_id: int,
+    source_uv_grid: Any,
     method: "_native.MappingMethod" = None,
     shared_context: Any = None,
 ) -> np.ndarray:
-    """Map a UV grid to a structured NumPy grid of high-face ids and UVs.
+    """Map a source UV grid to a structured NumPy grid of target face ids and UVs.
 
-    `low_uv_grid` may be a NumPy array with trailing dimension 2 or any nested
+    `source_uv_grid` may be a NumPy array with trailing dimension 2 or any nested
     Python sequence of UV pairs. `method` selects the projection strategy.
     Returns a NumPy structured array shaped like the input grid, with fields
     `high_face_id`, `high_u`, `high_v`.
     """
-    grid_array = np.asarray(low_uv_grid, dtype=np.float64)
+    grid_array = np.asarray(source_uv_grid, dtype=np.float64)
     if grid_array.ndim == 1:
         if grid_array.shape[0] != 2:
-            raise ValueError("low_uv_grid must end with a UV pair")
+            raise ValueError("source_uv_grid must end with a UV pair")
         grid_shape: tuple[int, ...] = ()
         flat = grid_array.reshape(1, 2)
     else:
         if grid_array.shape[-1] != 2:
-            raise ValueError("low_uv_grid must have a trailing dimension of size 2")
+            raise ValueError("source_uv_grid must have a trailing dimension of size 2")
         grid_shape = grid_array.shape[:-1]
         flat = grid_array.reshape(-1, 2)
 
-    cols = map(low_shape, high_shape, low_face_id, flat, method, shared_context).columns
+    cols = map_source_samples_to_target(
+        source_shape,
+        target_shape,
+        source_face_id,
+        flat,
+        method,
+        shared_context,
+    ).columns
     out = np.empty(grid_shape, dtype=np.dtype([
         ("high_face_id", np.int32),
         ("high_u", np.float64),
@@ -371,54 +378,54 @@ def mapping_batch_to_numpy_structured_array(batch: MappingBatchInput) -> np.ndar
     return MappingResultBatch.from_native(batch).to_numpy()
 
 
-def evaluate_shape_single_high_face_samples(
-    high_shape: ShapeInput,
-    high_face_id: int,
-    high_uv_samples: Any,
+def evaluate_single_face_samples(
+    shape: ShapeInput,
+    face_id: int,
+    uv_samples: Any,
     shared_context: Any = None,
 ) -> object:
-    """Evaluate point and normal data for one high face.
+    """Evaluate point and normal data for one face.
 
     Accepts a single UV pair, a NumPy array with trailing dimension 2, or any
     iterable of UV pairs.
     Returns a columnar `SurfaceEvalResultBatch`.
     """
     native = _native.evaluate_brep_single_high_face_samples(
-        shape_to_brep_bytes(high_shape),
-        int(high_face_id),
-        to_native_uv_coords(high_uv_samples),
+        shape_to_brep_bytes(shape),
+        int(face_id),
+        to_native_uv_coords(uv_samples),
         shared_context,
     )
     return SurfaceEvalResultBatch.from_native(native)
 
 
-def evaluate_shape_multiple_high_face_samples(
-    high_shape: ShapeInput,
+def evaluate_multiple_face_samples(
+    shape: ShapeInput,
     mapping: MappingBatchInput,
     shared_context: Any = None,
 ) -> SurfaceEvalResultBatch:
-    """Evaluate a mapping batch against a high shape or face list and return point/normal data.
+    """Evaluate a mapping batch against a shape or face list and return point/normal data.
 
     `mapping` may be a columnar `MappingResultBatch` wrapper or a native
     `_native.MappingResultBatch`. Returns a columnar `SurfaceEvalResultBatch`.
     """
     mapping_native = mapping.to_native() if isinstance(mapping, MappingResultBatch) else mapping
     native = _native.evaluate_brep_multiple_high_face_samples(
-        shape_to_brep_bytes(high_shape), mapping_native, shared_context
+        shape_to_brep_bytes(shape), mapping_native, shared_context
     )
     return SurfaceEvalResultBatch.from_native(native)
 
 
-def map_and_evaluate_shape_multiple_low_face_samples(
-    low_shape: ShapeInput,
-    high_shape: ShapeInput,
-    low_face_samples: FaceSampleBatchInput,
+def map_and_evaluate_source_samples_to_target(
+    source_shape: ShapeInput,
+    target_shape: ShapeInput,
+    source_face_samples: FaceSampleBatchInput,
     method: "_native.MappingMethod" = None,
     shared_context: Any = None,
 ) -> MappedSampleBatch:
-    """Run the low-sample to mapping to surface-eval pipeline in one call.
+    """Run the source-sample to target-mapping to surface-eval pipeline in one call.
 
-    `low_face_samples` may be a native `_native.FaceUvSampleGroupBatch`, a
+    `source_face_samples` may be a native `_native.FaceUvSampleGroupBatch`, a
     wrapper `cad_uv_map.types.FaceUvSampleGroupBatch`, or any flat/grouped Python
     sample form accepted by `normalize_face_uv_samples`. `method` selects the
     projection strategy. Returns a composed columnar `MappedSampleBatch`.
@@ -426,9 +433,9 @@ def map_and_evaluate_shape_multiple_low_face_samples(
     if method is None:
         method = _native.MappingMethod.nearest
     native = _native.map_and_evaluate_brep_multiple_low_face_samples(
-        shape_to_brep_bytes(low_shape),
-        shape_to_brep_bytes(high_shape),
-        normalize_face_uv_samples(low_face_samples).to_native(),
+        shape_to_brep_bytes(source_shape),
+        shape_to_brep_bytes(target_shape),
+        normalize_face_uv_samples(source_face_samples).to_native(),
         method,
         shared_context,
     )

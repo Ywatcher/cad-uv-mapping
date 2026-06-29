@@ -14,11 +14,11 @@ tests, and demos. The native module is exposed as `cad_uv_map._native`.
 | Face inspection | `describe_brep_faces`, `describe_shape_faces` | `_native.describe_brep_faces`, `_native.describe_brep_bytes` | `list[FaceInfo]` |
 | Face debug print | `debug_print_brep_faces`, `debug_print_shape_faces` | `_native.debug_print_brep_faces`, `_native.debug_print_brep_bytes` | `None` |
 | UV sampling | `sample_shape_face_uniform_uv_grid`, `sample_shape_face_uniform_uv_grid_batch`, `sample_shape_face_uniform_uv_tolerance_grid`, `sample_shape_face_uniform_uv_tolerance_grid_batch` | `_native.sample_brep_face_uniform_uv_grid`, `_native.sample_brep_face_uniform_uv_grid_batch`, `_native.sample_brep_face_uniform_uv_tolerance_grid`, `_native.sample_brep_face_uniform_uv_tolerance_grid_batch` | `FaceUvSampleGroup` or `FaceUvSampleGroupBatch` |
-| Low-to-high mapping | `map_shape_single_low_face_samples_to_high_faces`, `map_shape_single_low_face_samples_to_high_faces_nearest`, `map_shape_single_low_face_samples_to_high_faces_ray` | `_native.map_brep_single_low_face_samples_to_high_faces`, `_native.map_brep_single_low_face_samples_to_high_faces_nearest`, `_native.map_brep_single_low_face_samples_to_high_faces_ray` | `MappingResultBatch` |
-| Grid mapping | `map_shape_single_low_face_uv_grid_to_high_face_uv_grid`, `map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest`, `map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray` | same native mapping functions as above, followed by NumPy reshaping | `np.ndarray` structured grid |
+| Source-to-target mapping | `map_source_samples_to_target` | `_native.map_brep_single_low_face_samples_to_high_faces` | `MappingResultBatch` |
+| Grid mapping | `map_source_uv_grid_to_target` | same native mapping function as above, followed by NumPy reshaping | `np.ndarray` structured grid |
 | Mapping export | `mapping_batch_to_numpy_structured_array` | `MappingResultBatch.to_numpy_structured_array()` via conversion helper | `np.ndarray` structured array |
-| Surface evaluation | `evaluate_shape_single_high_face_samples`, `evaluate_shape_multiple_high_face_samples` | `_native.evaluate_brep_single_high_face_samples`, `_native.evaluate_brep_multiple_high_face_samples` | `SurfaceEvalResultBatch` |
-| Full pipeline | `map_and_evaluate_shape_multiple_low_face_samples` | `_native.map_and_evaluate_brep_multiple_low_face_samples` | `MappedSampleBatch` |
+| Surface evaluation | `evaluate_single_face_samples`, `evaluate_multiple_face_samples` | `_native.evaluate_brep_single_high_face_samples`, `_native.evaluate_brep_multiple_high_face_samples` | `SurfaceEvalResultBatch` |
+| Full pipeline | `map_and_evaluate_source_samples_to_target` | `_native.map_and_evaluate_brep_multiple_low_face_samples` | `MappedSampleBatch` |
 | Debug sample print | `debug_print_shape_uv_sample_batch`, `debug_print_shape_uv_samples` | `_native.debug_print_brep_uv_sample_batch` | `None` |
 
 ## Step APIs
@@ -125,21 +125,22 @@ Accepted grid forms:
 - Python objects with `face_id`, `tolerance`, `margin`
 - tuples of `(face_id, tolerance, margin)`
 
-### Low-to-High Mapping
+### Source-to-Target Mapping
 
-#### `map_shape_single_low_face_samples_to_high_faces_nearest(low_shape, high_shape, low_face_id, low_uv_samples, shared_context=None) -> MappingResultBatch`
+#### `map_source_samples_to_target(source_shape, target_shape, source_face_id, source_uv_samples, method=None, shared_context=None) -> MappingResultBatch`
 
 Native bridge:
 
 ```python
-_native.map_brep_single_low_face_samples_to_high_faces_nearest(...)
+_native.map_brep_single_low_face_samples_to_high_faces(...)
 ```
 
 Input:
 
-- `low_shape` and `high_shape`: shape-like inputs or face lists
-- `low_face_id`: the source face id on the low shape
-- `low_uv_samples`: any input accepted by `to_native_uv_coords`
+- `source_shape` and `target_shape`: shape-like inputs or face lists
+- `source_face_id`: the source face id on the source shape
+- `source_uv_samples`: any input accepted by `to_native_uv_coords`
+- `method`: optional `MappingMethod.nearest` or `MappingMethod.ray`
 - `shared_context`: optional native `MappingContext`
 
 Accepted sample forms:
@@ -152,27 +153,12 @@ Output:
 
 - `MappingResultBatch`
 
-#### `map_shape_single_low_face_samples_to_high_faces_ray(...) -> MappingResultBatch`
+#### `map_source_uv_grid_to_target(source_shape, target_shape, source_face_id, source_uv_grid, method=None, shared_context=None) -> np.ndarray`
 
 Native bridge:
 
 ```python
-_native.map_brep_single_low_face_samples_to_high_faces_ray(...)
-```
-
-This uses the low-face normal ray projection method instead of the nearest
-surface projection.
-
-#### `map_shape_single_low_face_samples_to_high_faces(...) -> MappingResultBatch`
-
-This is the compatibility alias for the nearest-surface mapping path.
-
-#### `map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(...) -> np.ndarray`
-
-Native bridge:
-
-```python
-_native.map_brep_single_low_face_samples_to_high_faces_nearest(...)
+_native.map_brep_single_low_face_samples_to_high_faces(...)
 ```
 
 The Python wrapper flattens the input UV grid, maps each sample, then reshapes
@@ -181,10 +167,6 @@ the result into a structured NumPy grid with fields:
 - `high_face_id`
 - `high_u`
 - `high_v`
-
-#### `map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(...) -> np.ndarray`
-
-Same flow as the nearest variant, but using ray projection.
 
 #### `mapping_batch_to_numpy_structured_array(batch: Any) -> np.ndarray`
 
@@ -198,7 +180,7 @@ This is the direct export helper for flat mapping results.
 
 ### Surface Evaluation
 
-#### `evaluate_shape_single_high_face_samples(high_shape, high_face_id, high_uv_samples, shared_context=None) -> SurfaceEvalResultBatch`
+#### `evaluate_single_face_samples(shape, face_id, uv_samples, shared_context=None) -> SurfaceEvalResultBatch`
 
 Native bridge:
 
@@ -208,15 +190,15 @@ _native.evaluate_brep_single_high_face_samples(...)
 
 Input:
 
-- `high_shape`: shape-like input or face list
-- `high_face_id`: face index in the high shape
-- `high_uv_samples`: single UV, NumPy UV array, or iterable of UV pairs
+- `shape`: shape-like input or face list
+- `face_id`: face index in the shape
+- `uv_samples`: single UV, NumPy UV array, or iterable of UV pairs
 
 Output:
 
 - `SurfaceEvalResultBatch`
 
-#### `evaluate_shape_multiple_high_face_samples(high_shape, mapping, shared_context=None) -> SurfaceEvalResultBatch`
+#### `evaluate_multiple_face_samples(shape, mapping, shared_context=None) -> SurfaceEvalResultBatch`
 
 Native bridge:
 
@@ -226,7 +208,7 @@ _native.evaluate_brep_multiple_high_face_samples(...)
 
 Input:
 
-- `high_shape`: shape-like input or face list
+- `shape`: shape-like input or face list
 - `mapping`: native or wrapped `MappingResultBatch`
 
 Output:
@@ -235,7 +217,7 @@ Output:
 
 ### Full Pipeline
 
-#### `map_and_evaluate_shape_multiple_low_face_samples(low_shape, high_shape, low_face_samples, shared_context=None) -> MappedSampleBatch`
+#### `map_and_evaluate_source_samples_to_target(source_shape, target_shape, source_face_samples, method=None, shared_context=None) -> MappedSampleBatch`
 
 Native bridge:
 
@@ -245,8 +227,9 @@ _native.map_and_evaluate_brep_multiple_low_face_samples(...)
 
 Input:
 
-- `low_shape` and `high_shape`: shape-like inputs or face lists
-- `low_face_samples`: grouped sample input accepted by `normalize_face_uv_samples`
+- `source_shape` and `target_shape`: shape-like inputs or face lists
+- `source_face_samples`: grouped sample input accepted by `normalize_face_uv_samples`
+- `method`: optional `MappingMethod.nearest` or `MappingMethod.ray`
 
 Output:
 
@@ -313,4 +296,3 @@ These are the conversion helpers used by the Python API:
 Use the Python wrapper layer when you want shape-like inputs, NumPy support, and
 lightweight normalization. Use the native `_native` objects when you already
 have the right batch type and want the thinnest bridge into C++.
-

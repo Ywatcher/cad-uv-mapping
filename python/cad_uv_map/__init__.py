@@ -112,36 +112,36 @@ def sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs):
     return _sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs)
 
 
-def map(*args, **kwargs):
-    """Merged low-to-high mapping; select the method with `method=MappingMethod...`."""
-    from .api import map as _map
+def map_source_samples_to_target(*args, **kwargs):
+    """Source-to-target mapping; select the method with `method=MappingMethod...`."""
+    from .api import map_source_samples_to_target as _map_source_samples_to_target
 
-    return _map(*args, **kwargs)
-
-
-def map_grid(*args, **kwargs):
-    """Merged UV-grid mapping; select the method with `method=MappingMethod...`."""
-    from .api import map_grid as _map_grid
-
-    return _map_grid(*args, **kwargs)
+    return _map_source_samples_to_target(*args, **kwargs)
 
 
-def evaluate_shape_single_high_face_samples(*args, **kwargs):
-    from .api import evaluate_shape_single_high_face_samples as _evaluate_shape_single_high_face_samples
+def map_source_uv_grid_to_target(*args, **kwargs):
+    """Source-to-target UV-grid mapping; select the method with `method=MappingMethod...`."""
+    from .api import map_source_uv_grid_to_target as _map_source_uv_grid_to_target
 
-    return _evaluate_shape_single_high_face_samples(*args, **kwargs)
-
-
-def evaluate_shape_multiple_high_face_samples(*args, **kwargs):
-    from .api import evaluate_shape_multiple_high_face_samples as _evaluate_shape_multiple_high_face_samples
-
-    return _evaluate_shape_multiple_high_face_samples(*args, **kwargs)
+    return _map_source_uv_grid_to_target(*args, **kwargs)
 
 
-def map_and_evaluate_shape_multiple_low_face_samples(*args, **kwargs):
-    from .api import map_and_evaluate_shape_multiple_low_face_samples as _map_and_evaluate_shape_multiple_low_face_samples
+def evaluate_single_face_samples(*args, **kwargs):
+    from .api import evaluate_single_face_samples as _evaluate_single_face_samples
 
-    return _map_and_evaluate_shape_multiple_low_face_samples(*args, **kwargs)
+    return _evaluate_single_face_samples(*args, **kwargs)
+
+
+def evaluate_multiple_face_samples(*args, **kwargs):
+    from .api import evaluate_multiple_face_samples as _evaluate_multiple_face_samples
+
+    return _evaluate_multiple_face_samples(*args, **kwargs)
+
+
+def map_and_evaluate_source_samples_to_target(*args, **kwargs):
+    from .api import map_and_evaluate_source_samples_to_target as _map_and_evaluate_source_samples_to_target
+
+    return _map_and_evaluate_source_samples_to_target(*args, **kwargs)
 
 
 __all__ = [
@@ -179,9 +179,12 @@ __all__ = [
     "sample_shape_face_uniform_uv_grid_batch",
     "sample_shape_face_uniform_uv_tolerance_grid",
     "sample_shape_face_uniform_uv_tolerance_grid_batch",
-    "map",
-    "map_grid",
-    "evaluate_shape_single_high_face_samples",
-    "evaluate_shape_multiple_high_face_samples",
-    "map_and_evaluate_shape_multiple_low_face_samples",
+    "map_source_samples_to_target",
+    "map_source_uv_grid_to_target",
+    "evaluate_single_face_samples",
+    "evaluate_multiple_face_samples",
+    "map_and_evaluate_source_samples_to_target",
+    # Candidate compatibility exports:
+    # "map",
+    # "map_grid",
 ]

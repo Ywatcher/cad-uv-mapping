@@ -33,6 +33,7 @@ enum class MappingStatus : std::uint8_t {
 enum class MappingMethod : std::uint8_t {
     nearest,
     ray,
+    ray_bidirectional,
 };
 
 /*

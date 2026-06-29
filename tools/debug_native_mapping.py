@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from cad_uv_map import describe_shape_faces, map_shape_single_low_face_samples_to_high_faces  # noqa: E402
+from cad_uv_map import describe_shape_faces, map_source_samples_to_target  # noqa: E402
 from tests.fixtures.cad_cases import (  # noqa: E402
     flat_to_u_groove_pair,
     flat_to_v_groove_pair,
@@ -60,29 +60,29 @@ def main() -> None:
 
     face_info = low_face_infos[args.low_face_index]
     samples = _sample_uv_grid(face_info, args.u_count, args.v_count, args.margin)
-    batch = map_shape_single_low_face_samples_to_high_faces(pair.low, pair.high, face_info.face_id, samples)
+    batch = map_source_samples_to_target(pair.low, pair.high, face_info.face_id, samples)
 
     print(
-        f"case={args.case} low_face_id={face_info.face_id} sample_count={len(samples)} result_count={len(batch.results)}",
+        f"case={args.case} source_face_id={face_info.face_id} sample_count={len(samples)} result_count={len(batch)}",
         flush=True,
     )
-    for result in batch.results:
-        value = result.value
+    for row_index in range(len(batch)):
+        row = batch.row(row_index)
         print(
             "index={index} low=({low_u:.6g}, {low_v:.6g}) "
             "high_face={high_face} high_uv=({high_u:.6g}, {high_v:.6g}) "
             "point=({x:.6g}, {y:.6g}, {z:.6g}) distance={distance:.6g} status={status}".format(
-                index=result.index,
-                low_u=value.low_u,
-                low_v=value.low_v,
-                high_face=value.high_face_id,
-                high_u=value.high_u,
-                high_v=value.high_v,
-                x=value.point_x,
-                y=value.point_y,
-                z=value.point_z,
-                distance=value.distance,
-                status=_status_name(value.status),
+                index=row.index,
+                low_u=row.low_uv[0],
+                low_v=row.low_uv[1],
+                high_face=row.high_face_id,
+                high_u=row.high_uv[0],
+                high_v=row.high_uv[1],
+                x=row.point[0],
+                y=row.point[1],
+                z=row.point[2],
+                distance=row.distance,
+                status=_status_name(row.status),
             ),
             flush=True,
         )
