@@ -10,6 +10,87 @@
 
 namespace py = pybind11;
 
+namespace {
+
+// Pack a sequence of mapping records into a columnar dict (struct-of-arrays).
+// `idx(rec)` yields the stable sample index; `val(rec)` yields the MappingResult.
+// Used by both MappingResultBatch and the composed MappedSampleBatch.
+template <typename Records, typename IdxFn, typename ValFn>
+py::dict pack_mapping_columns(const Records& records, IdxFn idx, ValFn val) {
+    const std::size_t n = records.size();
+    std::vector<std::size_t> index;
+    std::vector<std::int32_t> low_face_id, high_face_id;
+    std::vector<cad_uv_map::UvCoord> low_uv, high_uv;
+    std::vector<cad_uv_map::Vec3> point;
+    std::vector<double> distance;
+    std::vector<cad_uv_map::MappingStatus> status;
+    index.reserve(n);
+    low_face_id.reserve(n);
+    high_face_id.reserve(n);
+    low_uv.reserve(n);
+    high_uv.reserve(n);
+    point.reserve(n);
+    distance.reserve(n);
+    status.reserve(n);
+    for (const auto& record : records) {
+        const cad_uv_map::MappingResult& v = val(record);
+        index.push_back(idx(record));
+        low_face_id.push_back(v.low_face_id);
+        high_face_id.push_back(v.high_face_id);
+        low_uv.push_back(v.low_uv);
+        high_uv.push_back(v.high_uv);
+        point.push_back(v.point);
+        distance.push_back(v.distance);
+        status.push_back(v.status);
+    }
+    py::dict d;
+    d["index"] = cad_uv_map::to_numpy_index_array(index);
+    d["low_face_id"] = cad_uv_map::to_numpy_int32_array(low_face_id);
+    d["low_uv"] = cad_uv_map::to_numpy_uv_array(low_uv);
+    d["high_face_id"] = cad_uv_map::to_numpy_int32_array(high_face_id);
+    d["high_uv"] = cad_uv_map::to_numpy_uv_array(high_uv);
+    d["point"] = cad_uv_map::to_numpy_vec3_array(point);
+    d["distance"] = cad_uv_map::to_numpy_double_array(distance);
+    d["status"] = cad_uv_map::to_numpy_status_array(status);
+    return d;
+}
+
+// Pack a sequence of surface-evaluation records into a columnar dict.
+template <typename Records, typename IdxFn, typename ValFn>
+py::dict pack_surface_columns(const Records& records, IdxFn idx, ValFn val) {
+    const std::size_t n = records.size();
+    std::vector<std::size_t> index;
+    std::vector<std::int32_t> face_id;
+    std::vector<cad_uv_map::UvCoord> uv;
+    std::vector<cad_uv_map::Vec3> point, normal;
+    std::vector<bool> normal_defined;
+    index.reserve(n);
+    face_id.reserve(n);
+    uv.reserve(n);
+    point.reserve(n);
+    normal.reserve(n);
+    normal_defined.reserve(n);
+    for (const auto& record : records) {
+        const cad_uv_map::SurfaceEvalResult& v = val(record);
+        index.push_back(idx(record));
+        face_id.push_back(v.face_id);
+        uv.push_back(v.uv);
+        point.push_back(v.point);
+        normal.push_back(v.normal);
+        normal_defined.push_back(v.normal_defined);
+    }
+    py::dict d;
+    d["index"] = cad_uv_map::to_numpy_index_array(index);
+    d["face_id"] = cad_uv_map::to_numpy_int32_array(face_id);
+    d["uv"] = cad_uv_map::to_numpy_uv_array(uv);
+    d["point"] = cad_uv_map::to_numpy_vec3_array(point);
+    d["normal"] = cad_uv_map::to_numpy_vec3_array(normal);
+    d["normal_defined"] = cad_uv_map::to_numpy_bool_array(normal_defined);
+    return d;
+}
+
+}  // namespace
+
 PYBIND11_MODULE(_native, m) {
     m.doc() = "OpenCascade-backed CAD UV mapping native module";
 
@@ -198,216 +279,50 @@ PYBIND11_MODULE(_native, m) {
         .value("outside_trim", cad_uv_map::MappingStatus::outside_trim)
         .value("failed", cad_uv_map::MappingStatus::failed);
 
-    py::class_<cad_uv_map::MappingResult>(m, "MappingResult")
-        .def_readonly("low_face_id", &cad_uv_map::MappingResult::low_face_id)
-        .def_readonly("low_uv", &cad_uv_map::MappingResult::low_uv)
-        .def_readonly("high_face_id", &cad_uv_map::MappingResult::high_face_id)
-        .def_readonly("high_uv", &cad_uv_map::MappingResult::high_uv)
-        .def_readonly("point", &cad_uv_map::MappingResult::point)
-        .def_readonly("distance", &cad_uv_map::MappingResult::distance)
-        .def_readonly("status", &cad_uv_map::MappingResult::status)
-        .def_property_readonly("low_u", [](const cad_uv_map::MappingResult& value) { return value.low_uv.u; })
-        .def_property_readonly("low_v", [](const cad_uv_map::MappingResult& value) { return value.low_uv.v; })
-        .def_property_readonly("high_u", [](const cad_uv_map::MappingResult& value) { return value.high_uv.u; })
-        .def_property_readonly("high_v", [](const cad_uv_map::MappingResult& value) { return value.high_uv.v; })
-        .def_property_readonly("point_x", [](const cad_uv_map::MappingResult& value) { return value.point.x; })
-        .def_property_readonly("point_y", [](const cad_uv_map::MappingResult& value) { return value.point.y; })
-        .def_property_readonly("point_z", [](const cad_uv_map::MappingResult& value) { return value.point.z; });
+    py::enum_<cad_uv_map::MappingMethod>(m, "MappingMethod")
+        .value("nearest", cad_uv_map::MappingMethod::nearest)
+        .value("ray", cad_uv_map::MappingMethod::ray);
 
-    py::class_<cad_uv_map::IndexedMappingResult>(m, "IndexedMappingResult")
-        .def_readonly("index", &cad_uv_map::IndexedMappingResult::index)
-        .def_readonly("value", &cad_uv_map::IndexedMappingResult::value);
-
+    // Output batches expose a single columnar accessor `columns()` returning a
+    // dict of name -> NumPy array (struct-of-arrays). Per-record and Indexed*
+    // output types are intentionally not bound; Python builds row views and
+    // structured arrays from the columns.
     py::class_<cad_uv_map::MappingResultBatch>(m, "MappingResultBatch")
         .def(py::init<>())
-        .def_readonly("results", &cad_uv_map::MappingResultBatch::results)
-        .def("to_numpy_low_uv_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<cad_uv_map::UvCoord> coords;
-            coords.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                coords.push_back(result.value.low_uv);
-            }
-            return cad_uv_map::to_numpy_uv_array(coords);
-        })
-        .def("to_numpy_high_uv_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<cad_uv_map::UvCoord> coords;
-            coords.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                coords.push_back(result.value.high_uv);
-            }
-            return cad_uv_map::to_numpy_uv_array(coords);
-        })
-        .def("to_numpy_point_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<cad_uv_map::Vec3> points;
-            points.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                points.push_back(result.value.point);
-            }
-            return cad_uv_map::to_numpy_vec3_array(points);
-        })
-        .def("to_numpy_distance_array", [](const cad_uv_map::MappingResultBatch& value) {
-            py::array_t<double> array({static_cast<py::ssize_t>(value.results.size())});
-            auto view = array.mutable_unchecked<1>();
-            for (std::size_t i = 0; i < value.results.size(); ++i) {
-                view(i) = value.results[i].value.distance;
-            }
-            return array;
-        })
-        .def("to_numpy_high_face_id_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<std::int32_t> ids;
-            ids.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                ids.push_back(result.value.high_face_id);
-            }
-            return cad_uv_map::to_numpy_int32_array(ids);
-        })
-        .def("to_numpy_low_face_id_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<std::int32_t> ids;
-            ids.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                ids.push_back(result.value.low_face_id);
-            }
-            return cad_uv_map::to_numpy_int32_array(ids);
-        })
-        .def("to_numpy_status_array", [](const cad_uv_map::MappingResultBatch& value) {
-            std::vector<cad_uv_map::MappingStatus> statuses;
-            statuses.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                statuses.push_back(result.value.status);
-            }
-            return cad_uv_map::to_numpy_status_array(statuses);
+        .def("__len__", [](const cad_uv_map::MappingResultBatch& b) { return b.results.size(); })
+        .def("columns", [](const cad_uv_map::MappingResultBatch& b) {
+            return pack_mapping_columns(
+                b.results,
+                [](const cad_uv_map::IndexedMappingResult& r) { return r.index; },
+                [](const cad_uv_map::IndexedMappingResult& r) -> const cad_uv_map::MappingResult& { return r.value; });
         });
-
-    py::class_<cad_uv_map::SurfaceEvalResult>(m, "SurfaceEvalResult")
-        .def_readonly("face_id", &cad_uv_map::SurfaceEvalResult::face_id)
-        .def_readonly("uv", &cad_uv_map::SurfaceEvalResult::uv)
-        .def_readonly("point", &cad_uv_map::SurfaceEvalResult::point)
-        .def_readonly("normal", &cad_uv_map::SurfaceEvalResult::normal)
-        .def_readonly("normal_defined", &cad_uv_map::SurfaceEvalResult::normal_defined)
-        .def_property_readonly("u", [](const cad_uv_map::SurfaceEvalResult& value) { return value.uv.u; })
-        .def_property_readonly("v", [](const cad_uv_map::SurfaceEvalResult& value) { return value.uv.v; })
-        .def_property_readonly("point_x", [](const cad_uv_map::SurfaceEvalResult& value) { return value.point.x; })
-        .def_property_readonly("point_y", [](const cad_uv_map::SurfaceEvalResult& value) { return value.point.y; })
-        .def_property_readonly("point_z", [](const cad_uv_map::SurfaceEvalResult& value) { return value.point.z; })
-        .def_property_readonly("normal_x", [](const cad_uv_map::SurfaceEvalResult& value) { return value.normal.x; })
-        .def_property_readonly("normal_y", [](const cad_uv_map::SurfaceEvalResult& value) { return value.normal.y; })
-        .def_property_readonly("normal_z", [](const cad_uv_map::SurfaceEvalResult& value) { return value.normal.z; });
-
-    py::class_<cad_uv_map::IndexedSurfaceEvalResult>(m, "IndexedSurfaceEvalResult")
-        .def_readonly("index", &cad_uv_map::IndexedSurfaceEvalResult::index)
-        .def_readonly("value", &cad_uv_map::IndexedSurfaceEvalResult::value);
 
     py::class_<cad_uv_map::SurfaceEvalResultBatch>(m, "SurfaceEvalResultBatch")
         .def(py::init<>())
-        .def_readonly("results", &cad_uv_map::SurfaceEvalResultBatch::results)
-        .def("to_numpy_uv_array", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
-            std::vector<cad_uv_map::UvCoord> coords;
-            coords.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                coords.push_back(result.value.uv);
-            }
-            return cad_uv_map::to_numpy_uv_array(coords);
-        })
-        .def("to_numpy_point_array", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
-            std::vector<cad_uv_map::Vec3> points;
-            points.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                points.push_back(result.value.point);
-            }
-            return cad_uv_map::to_numpy_vec3_array(points);
-        })
-        .def("to_numpy_normal_array", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
-            std::vector<cad_uv_map::Vec3> normals;
-            normals.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                normals.push_back(result.value.normal);
-            }
-            return cad_uv_map::to_numpy_vec3_array(normals);
-        })
-        .def("to_numpy_face_id_array", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
-            std::vector<std::int32_t> ids;
-            ids.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                ids.push_back(result.value.face_id);
-            }
-            return cad_uv_map::to_numpy_int32_array(ids);
-        })
-        .def("to_numpy_normal_defined_mask", [](const cad_uv_map::SurfaceEvalResultBatch& value) {
-            std::vector<bool> flags;
-            flags.reserve(value.results.size());
-            for (const auto& result : value.results) {
-                flags.push_back(result.value.normal_defined);
-            }
-            return cad_uv_map::to_numpy_bool_array(flags);
+        .def("__len__", [](const cad_uv_map::SurfaceEvalResultBatch& b) { return b.results.size(); })
+        .def("columns", [](const cad_uv_map::SurfaceEvalResultBatch& b) {
+            return pack_surface_columns(
+                b.results,
+                [](const cad_uv_map::IndexedSurfaceEvalResult& r) { return r.index; },
+                [](const cad_uv_map::IndexedSurfaceEvalResult& r) -> const cad_uv_map::SurfaceEvalResult& { return r.value; });
         });
 
-    py::class_<cad_uv_map::MappedSampleRecord>(m, "MappedSampleRecord")
-        .def_readonly("sample", &cad_uv_map::MappedSampleRecord::sample)
-        .def_readonly("mapping", &cad_uv_map::MappedSampleRecord::mapping)
-        .def_readonly("surface", &cad_uv_map::MappedSampleRecord::surface);
-
-    py::class_<cad_uv_map::IndexedMappedSampleRecord>(m, "IndexedMappedSampleRecord")
-        .def_readonly("index", &cad_uv_map::IndexedMappedSampleRecord::index)
-        .def_readonly("value", &cad_uv_map::IndexedMappedSampleRecord::value);
-
+    // The combined batch composes the two stage column-sets, sharing row order.
+    // Python wraps these into composed .mapping / .surface sub-batches.
     py::class_<cad_uv_map::MappedSampleBatch>(m, "MappedSampleBatch")
         .def(py::init<>())
-        .def_readonly("records", &cad_uv_map::MappedSampleBatch::records)
-        .def("to_numpy_low_uv_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<cad_uv_map::UvCoord> coords;
-            coords.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                coords.push_back(record.value.sample.uv);
-            }
-            return cad_uv_map::to_numpy_uv_array(coords);
+        .def("__len__", [](const cad_uv_map::MappedSampleBatch& b) { return b.records.size(); })
+        .def("mapping_columns", [](const cad_uv_map::MappedSampleBatch& b) {
+            return pack_mapping_columns(
+                b.records,
+                [](const cad_uv_map::IndexedMappedSampleRecord& r) { return r.index; },
+                [](const cad_uv_map::IndexedMappedSampleRecord& r) -> const cad_uv_map::MappingResult& { return r.value.mapping; });
         })
-        .def("to_numpy_high_uv_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<cad_uv_map::UvCoord> coords;
-            coords.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                coords.push_back(record.value.mapping.high_uv);
-            }
-            return cad_uv_map::to_numpy_uv_array(coords);
-        })
-        .def("to_numpy_point_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<cad_uv_map::Vec3> points;
-            points.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                points.push_back(record.value.surface.point);
-            }
-            return cad_uv_map::to_numpy_vec3_array(points);
-        })
-        .def("to_numpy_normal_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<cad_uv_map::Vec3> normals;
-            normals.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                normals.push_back(record.value.surface.normal);
-            }
-            return cad_uv_map::to_numpy_vec3_array(normals);
-        })
-        .def("to_numpy_face_id_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<std::int32_t> ids;
-            ids.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                ids.push_back(record.value.mapping.high_face_id);
-            }
-            return cad_uv_map::to_numpy_int32_array(ids);
-        })
-        .def("to_numpy_status_array", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<cad_uv_map::MappingStatus> statuses;
-            statuses.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                statuses.push_back(record.value.mapping.status);
-            }
-            return cad_uv_map::to_numpy_status_array(statuses);
-        })
-        .def("to_numpy_normal_defined_mask", [](const cad_uv_map::MappedSampleBatch& value) {
-            std::vector<bool> flags;
-            flags.reserve(value.records.size());
-            for (const auto& record : value.records) {
-                flags.push_back(record.value.surface.normal_defined);
-            }
-            return cad_uv_map::to_numpy_bool_array(flags);
+        .def("surface_columns", [](const cad_uv_map::MappedSampleBatch& b) {
+            return pack_surface_columns(
+                b.records,
+                [](const cad_uv_map::IndexedMappedSampleRecord& r) { return r.index; },
+                [](const cad_uv_map::IndexedMappedSampleRecord& r) -> const cad_uv_map::SurfaceEvalResult& { return r.value.surface; });
         });
 
     py::class_<cad_uv_map::FaceInfo>(m, "FaceInfo")
@@ -512,60 +427,23 @@ PYBIND11_MODULE(_native, m) {
              py::bytes high_brep_data,
              std::int32_t low_face_id,
              const std::vector<cad_uv_map::UvCoord>& low_uv_samples,
+             cad_uv_map::MappingMethod method,
              const cad_uv_map::MappingContext* shared_context) {
               return cad_uv_map::map_brep_single_low_face_samples_to_high_faces(
                   static_cast<std::string>(low_brep_data),
                   static_cast<std::string>(high_brep_data),
                   low_face_id,
                   low_uv_samples,
+                  method,
                   shared_context);
           },
           py::arg("low_brep_data"),
           py::arg("high_brep_data"),
           py::arg("low_face_id"),
           py::arg("low_uv_samples"),
+          py::arg("method") = cad_uv_map::MappingMethod::nearest,
           py::arg("shared_context") = nullptr,
-          "Map UV samples from one low face to nearest high faces.");
-
-    m.def("map_brep_single_low_face_samples_to_high_faces_nearest",
-          [](py::bytes low_brep_data,
-             py::bytes high_brep_data,
-             std::int32_t low_face_id,
-             const std::vector<cad_uv_map::UvCoord>& low_uv_samples,
-             const cad_uv_map::MappingContext* shared_context) {
-              return cad_uv_map::map_brep_single_low_face_samples_to_high_faces(
-                  static_cast<std::string>(low_brep_data),
-                  static_cast<std::string>(high_brep_data),
-                  low_face_id,
-                  low_uv_samples,
-                  shared_context);
-          },
-          py::arg("low_brep_data"),
-          py::arg("high_brep_data"),
-          py::arg("low_face_id"),
-          py::arg("low_uv_samples"),
-          py::arg("shared_context") = nullptr,
-          "Map UV samples from one low face to nearest high faces.");
-
-    m.def("map_brep_single_low_face_samples_to_high_faces_ray",
-          [](py::bytes low_brep_data,
-             py::bytes high_brep_data,
-             std::int32_t low_face_id,
-             const std::vector<cad_uv_map::UvCoord>& low_uv_samples,
-             const cad_uv_map::MappingContext* shared_context) {
-              return cad_uv_map::map_brep_single_low_face_samples_to_high_faces_ray(
-                  static_cast<std::string>(low_brep_data),
-                  static_cast<std::string>(high_brep_data),
-                  low_face_id,
-                  low_uv_samples,
-                  shared_context);
-          },
-          py::arg("low_brep_data"),
-          py::arg("high_brep_data"),
-          py::arg("low_face_id"),
-          py::arg("low_uv_samples"),
-          py::arg("shared_context") = nullptr,
-          "Map UV samples from one low face along the low-face normal rays.");
+          "Map UV samples from one low face to high faces using the selected method.");
 
     m.def("evaluate_brep_single_high_face_samples",
           [](py::bytes high_brep_data,
@@ -608,6 +486,7 @@ PYBIND11_MODULE(_native, m) {
           [](py::bytes low_brep_data,
              py::bytes high_brep_data,
              const cad_uv_map::FaceUvSampleGroupBatch& low_face_samples,
+             cad_uv_map::MappingMethod method,
              const cad_uv_map::MappingContext* shared_context) {
               const TopoDS_Shape low_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(low_brep_data));
               const TopoDS_Shape high_shape = cad_uv_map::read_brep_bytes(static_cast<std::string>(high_brep_data));
@@ -615,11 +494,13 @@ PYBIND11_MODULE(_native, m) {
                   low_face_samples,
                   cad_uv_map::collect_faces(low_shape),
                   cad_uv_map::collect_faces(high_shape),
+                  method,
                   shared_context);
           },
           py::arg("low_brep_data"),
           py::arg("high_brep_data"),
           py::arg("low_face_samples"),
+          py::arg("method") = cad_uv_map::MappingMethod::nearest,
           py::arg("shared_context") = nullptr,
           "Run the full low-sample to mapping to surface-eval pipeline.");
 }

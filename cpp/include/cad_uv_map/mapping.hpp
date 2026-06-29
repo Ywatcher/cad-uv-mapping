@@ -25,6 +25,17 @@ enum class MappingStatus : std::uint8_t {
 };
 
 /*
+ * MappingMethod selects the low-to-high projection strategy.
+ *
+ * The per-method implementations live as separate functions in
+ * cpp/src/projection/; the public entry points below dispatch on this value.
+ */
+enum class MappingMethod : std::uint8_t {
+    nearest,
+    ray,
+};
+
+/*
  * MappingResult stores the selected high-side correspondence for one sample.
  *
  * The sample is treated independently from the batch, so high_face_id may vary
@@ -63,63 +74,31 @@ struct MappingResultBatch {
 /*
  * Core single-face mapping entry point.
  *
- * This is the unit of work that should do the real projection logic. The
- * multi-face wrapper should reuse this function rather than duplicating it.
- *
- * TODO: if we later want a pure UV-only variant, expose that separately and
- * keep this as the face-qualified CAD path.
+ * This is the unit of work that does the real projection logic. The projection
+ * method is selected by `method`; the per-method implementations live as
+ * separate functions in cpp/src/projection/ and are dispatched here. The
+ * multi-face wrapper reuses this function rather than duplicating it.
  */
 MappingResultBatch map_single_low_face_samples_to_high_faces(
     const TopoDS_Face& low_face,
     std::int32_t low_face_id,
     const std::vector<UvCoord>& low_uv_samples,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method = MappingMethod::nearest,
     const MappingContext* shared_context = nullptr);
 
 /*
- * Nearest-surface mapping entry point.
+ * BREP-bytes single-face mapping entry point.
  *
- * This is the current default method. It is kept under an explicit suffix so
- * the ray-based variant can live beside it with the same naming pattern.
+ * Reads both shapes from BREP bytes, extracts faces, validates the low face id,
+ * then dispatches to the projection method selected by `method`.
  */
-MappingResultBatch map_single_low_face_samples_to_high_faces_nearest(
-    const TopoDS_Face& low_face,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const std::vector<TopoDS_Face>& high_faces,
-    const MappingContext* shared_context = nullptr);
-
-/*
- * Normal-ray mapping entry point.
- *
- * This uses a ray cast along the low-face normal instead of nearest distance.
- */
-MappingResultBatch map_single_low_face_samples_to_high_faces_ray(
-    const TopoDS_Face& low_face,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const std::vector<TopoDS_Face>& high_faces,
-    const MappingContext* shared_context = nullptr);
-
 MappingResultBatch map_brep_single_low_face_samples_to_high_faces(
     const std::string& low_brep_data,
     const std::string& high_brep_data,
     std::int32_t low_face_id,
     const std::vector<UvCoord>& low_uv_samples,
-    const MappingContext* shared_context = nullptr);
-
-MappingResultBatch map_brep_single_low_face_samples_to_high_faces_nearest(
-    const std::string& low_brep_data,
-    const std::string& high_brep_data,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const MappingContext* shared_context = nullptr);
-
-MappingResultBatch map_brep_single_low_face_samples_to_high_faces_ray(
-    const std::string& low_brep_data,
-    const std::string& high_brep_data,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
+    MappingMethod method = MappingMethod::nearest,
     const MappingContext* shared_context = nullptr);
 
 /*
@@ -133,6 +112,7 @@ MappingResultBatch map_multiple_low_face_sample_groups_to_high_faces(
     const FaceUvSampleGroupBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method = MappingMethod::nearest,
     const MappingContext* shared_context = nullptr);
 
 /*

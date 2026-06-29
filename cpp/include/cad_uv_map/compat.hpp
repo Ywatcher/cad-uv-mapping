@@ -18,6 +18,7 @@ MappingResultBatch map_multiple_low_face_uv_samples_to_high_faces(
     const std::vector<FlatUvSample>& samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method = MappingMethod::nearest,
     const MappingContext* shared_context = nullptr);
 
 void debug_print_brep_uv_samples(

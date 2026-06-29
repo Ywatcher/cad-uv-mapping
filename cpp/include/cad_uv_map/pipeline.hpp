@@ -41,6 +41,7 @@ MappedSampleBatch map_and_evaluate_multiple_low_face_samples(
     const FaceUvSampleGroupBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method = MappingMethod::nearest,
     const MappingContext* shared_context = nullptr);
 
 } // namespace cad_uv_map

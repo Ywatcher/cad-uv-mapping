@@ -29,11 +29,13 @@ MappingResultBatch map_multiple_low_face_uv_samples_to_high_faces(
     const std::vector<FlatUvSample>& samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method,
     const MappingContext* shared_context) {
     return map_multiple_low_face_sample_groups_to_high_faces(
         normalize_flat_uv_samples(samples),
         low_faces,
         high_faces,
+        method,
         shared_context);
 }
 

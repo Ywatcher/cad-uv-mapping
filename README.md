@@ -20,10 +20,9 @@ story is stable.
 
 ## Development Install
 
-Use the same conda environment as the Panda3D CAD experiments:
 
 ```bash
-/mnt/D/packages/miniconda3/envs/game-qt6-py312/bin/python -m pip install -e . --no-build-isolation
+python -m pip install -e . --no-build-isolation
 ```
 
 You need OpenCascade headers/libraries visible to CMake. In conda environments this

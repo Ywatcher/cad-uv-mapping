@@ -2,24 +2,24 @@ import numpy as np
 
 from cad_uv_map import (
     FaceUvSampleGroupBatch,
+    MappingMethod,
+    MappingStatus,
     describe_shape_faces,
     evaluate_shape_multiple_high_face_samples,
     evaluate_shape_single_high_face_samples,
-    MappingResultBatch,
-    MappedSampleBatch,
-    SurfaceEvalResultBatch,
+    map,
     map_and_evaluate_shape_multiple_low_face_samples,
+    map_grid,
     mapping_batch_to_structured_array,
-    map_shape_single_low_face_samples_to_high_faces,
-    map_shape_single_low_face_samples_to_high_faces_ray,
-    map_shape_single_low_face_uv_grid_to_high_face_uv_grid,
+    normalize_face_uv_samples,
     sample_shape_face_uniform_uv_grid,
     sample_shape_face_uniform_uv_tolerance_grid,
-    normalize_face_uv_samples,
     UvCoord,
 )
 from cad_uv_map.api import MappingContext
 from tests.fixtures.cad_cases import identity_box_pair, pedestal_ribs_pair
+
+HIT = MappingStatus.hit.value
 
 
 def _sample_uv_grid(face_info, u_count: int, v_count: int, margin: float = 0.5):
@@ -34,10 +34,6 @@ def _sample_uv_grid(face_info, u_count: int, v_count: int, margin: float = 0.5):
     return samples
 
 
-def _status_name(status) -> str:
-    return getattr(status, "name", str(status))
-
-
 def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits():
     pair = identity_box_pair()
     low_face = describe_shape_faces(pair.low)[0]
@@ -45,24 +41,15 @@ def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits(
     context = MappingContext()
     context.enable_parallel = True
 
-    batch = map_shape_single_low_face_samples_to_high_faces(
-        pair.low,
-        pair.high,
-        low_face.face_id,
-        samples,
-        context,
-    )
+    batch = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
 
-    assert len(batch.results) == len(samples)
-    for expected_index, result in enumerate(batch.results):
-        value = result.value
-        assert result.index == expected_index
-        assert _status_name(value.status) == "hit"
-        assert value.low_face_id == low_face.face_id
-        assert value.high_face_id == low_face.face_id
-        assert np.isclose(value.high_uv.u, value.low_uv.u)
-        assert np.isclose(value.high_uv.v, value.low_uv.v)
-        assert np.isclose(value.distance, 0.0)
+    assert len(batch) == len(samples)
+    assert batch.index.tolist() == list(range(len(samples)))
+    assert np.all(batch.status == HIT)
+    assert np.all(batch.low_face_id == low_face.face_id)
+    assert np.all(batch.high_face_id == low_face.face_id)
+    assert np.allclose(batch.high_uv, batch.low_uv)
+    assert np.allclose(batch.distance, 0.0)
 
 
 def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
@@ -72,13 +59,7 @@ def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
     context = MappingContext()
     context.enable_parallel = True
 
-    mapped = map_shape_single_low_face_uv_grid_to_high_face_uv_grid(
-        pair.low,
-        pair.high,
-        low_face.face_id,
-        samples,
-        context,
-    )
+    mapped = map_grid(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
 
     assert mapped.shape == (2, 2)
     assert mapped.dtype.names == ("high_face_id", "high_u", "high_v")
@@ -87,7 +68,7 @@ def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
     assert np.allclose(mapped["high_v"], samples[..., 1])
 
 
-def test_python_conversion_helpers_keep_grouped_face_samples_and_mapping_batches_usable():
+def test_python_conversion_helpers_keep_grouped_face_samples_and_columnar_batches_usable():
     batch = normalize_face_uv_samples({3: [(0.25, 0.5), (0.75, 0.5)]})
     assert isinstance(batch, FaceUvSampleGroupBatch)
     assert len(batch.faces) == 1
@@ -111,33 +92,33 @@ def test_python_conversion_helpers_keep_grouped_face_samples_and_mapping_batches
     samples = _sample_uv_grid(low_face, 1, 2)
     context = MappingContext()
     context.enable_parallel = True
-    native_batch = map_shape_single_low_face_samples_to_high_faces(
-        pair.low,
-        pair.high,
-        low_face.face_id,
-        samples,
-        context,
-    )
-    batch = MappingResultBatch.from_native(native_batch)
-    structured = mapping_batch_to_structured_array(batch)
+    mapping = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+
+    # Columnar per-field access.
+    assert mapping.high_uv.shape == (len(samples), 2)
+    assert mapping.low_uv.shape == (len(samples), 2)
+    assert mapping.high_face_id.shape == (len(samples),)
+    assert mapping.point.shape == (len(samples), 3)
+
+    # One structured array, and a flat row view.
+    structured = mapping_batch_to_structured_array(mapping)
     assert structured.shape == (len(samples),)
     assert structured.dtype.names == (
         "index",
         "low_face_id",
-        "low_u",
-        "low_v",
+        "low_uv",
         "high_face_id",
-        "high_u",
-        "high_v",
-        "point_x",
-        "point_y",
-        "point_z",
+        "high_uv",
+        "point",
         "distance",
         "status",
     )
-    assert batch.to_numpy_high_uv_array().shape == (len(samples), 2)
-    assert batch.to_numpy_low_uv_array().shape == (len(samples), 2)
-    assert batch.to_numpy_high_face_id_array().shape == (len(samples),)
+    row = mapping.row(0)
+    assert row.high_face_id == mapping.high_face_id[0]
+    assert np.allclose(row.high_uv, mapping.high_uv[0])
+
+    # to_dict exposes the same arrays (zero-copy).
+    assert mapping.to_dict()["high_uv"] is mapping.high_uv
 
 
 def test_native_uniform_uv_sampler_generates_face_group_in_cpp():
@@ -162,7 +143,7 @@ def test_native_shape_like_inputs_accept_face_lists_for_sampling_and_mapping():
     assert len(face_info) == len(low_faces)
 
     low_face = face_info[0]
-    samples = _sample_uv_grid(low_faces[0], 2, 2)
+    samples = _sample_uv_grid(low_face, 2, 2)
     context = MappingContext()
     context.enable_parallel = True
 
@@ -170,15 +151,9 @@ def test_native_shape_like_inputs_accept_face_lists_for_sampling_and_mapping():
     assert group.face_id == low_face.face_id
     assert len(group.samples) == 4
 
-    batch = map_shape_single_low_face_samples_to_high_faces_nearest(
-        low_faces,
-        high_faces,
-        low_face.face_id,
-        samples,
-        context,
-    )
-    assert len(batch.results) == len(samples)
-    assert all(result.value.low_face_id == low_face.face_id for result in batch.results)
+    batch = map(low_faces, high_faces, low_face.face_id, samples, MappingMethod.nearest, context)
+    assert len(batch) == len(samples)
+    assert np.all(batch.low_face_id == low_face.face_id)
 
 
 def test_native_uniform_uv_tolerance_sampler_generates_face_group_in_cpp():
@@ -199,46 +174,33 @@ def test_native_high_face_normal_evaluation_and_full_pipeline_smoke():
     context = MappingContext()
     context.enable_parallel = True
 
-    native_surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, samples, context)
-    surface_batch = SurfaceEvalResultBatch.from_native(native_surface_batch)
-    assert len(surface_batch.results) == len(samples)
-    assert all(result.value.normal_defined for result in surface_batch.results)
-    assert all(hasattr(result.value, "uv") and hasattr(result.value, "point") and hasattr(result.value, "normal") for result in surface_batch.results)
-    assert surface_batch.to_numpy_uv_array().shape == (len(samples), 2)
-    assert surface_batch.to_numpy_normal_array().shape == (len(samples), 3)
-    assert surface_batch.to_numpy_point_array().shape == (len(samples), 3)
-    assert surface_batch.to_numpy_normal_defined_mask().shape == (len(samples),)
+    surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, samples, context)
+    assert len(surface_batch) == len(samples)
+    assert np.all(surface_batch.normal_defined)
+    assert surface_batch.uv.shape == (len(samples), 2)
+    assert surface_batch.normal.shape == (len(samples), 3)
+    assert surface_batch.point.shape == (len(samples), 3)
+    assert surface_batch.normal_defined.shape == (len(samples),)
 
-    native_mapping_batch = map_shape_single_low_face_samples_to_high_faces(
-        pair.low,
-        pair.high,
-        low_face.face_id,
-        samples,
-        context,
-    )
-    mapping_batch = MappingResultBatch.from_native(native_mapping_batch)
-    mapped_surface_batch = SurfaceEvalResultBatch.from_native(
-        evaluate_shape_multiple_high_face_samples(pair.high, native_mapping_batch)
-    )
-    assert len(mapped_surface_batch.results) == len(samples)
-    assert all(result.value.normal_defined for result in mapped_surface_batch.results)
+    mapping_batch = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    mapped_surface_batch = evaluate_shape_multiple_high_face_samples(pair.high, mapping_batch)
+    assert len(mapped_surface_batch) == len(samples)
+    assert np.all(mapped_surface_batch.normal_defined)
 
     low_face_batch = normalize_face_uv_samples({low_face.face_id: samples})
 
-    native_combined_batch = map_and_evaluate_shape_multiple_low_face_samples(
-        pair.low,
-        pair.high,
-        low_face_batch,
-        context,
+    combined = map_and_evaluate_shape_multiple_low_face_samples(
+        pair.low, pair.high, low_face_batch, MappingMethod.nearest, context
     )
-    combined_batch = MappedSampleBatch.from_native(native_combined_batch)
-    assert len(combined_batch.records) == len(samples)
-    assert all(record.value.surface.normal_defined for record in combined_batch.records)
-    assert combined_batch.to_numpy_low_uv_array().shape == (len(samples), 2)
-    assert combined_batch.to_numpy_high_uv_array().shape == (len(samples), 2)
-    assert combined_batch.to_numpy_point_array().shape == (len(samples), 3)
-    assert combined_batch.to_numpy_normal_array().shape == (len(samples), 3)
-    assert combined_batch.to_numpy_status_array().shape == (len(samples),)
+    assert len(combined) == len(samples)
+    assert np.all(combined.surface.normal_defined)
+    assert combined.mapping.low_uv.shape == (len(samples), 2)
+    assert combined.mapping.high_uv.shape == (len(samples), 2)
+    assert combined.surface.point.shape == (len(samples), 3)
+    assert combined.surface.normal.shape == (len(samples), 3)
+    assert combined.mapping.status.shape == (len(samples),)
+    # Composed row pulls from both stages.
+    assert np.allclose(combined.row(0).surface.normal, combined.surface.normal[0], equal_nan=True)
 
 
 def test_native_high_face_evaluation_accepts_numpy_uv_arrays():
@@ -246,27 +208,23 @@ def test_native_high_face_evaluation_accepts_numpy_uv_arrays():
     low_face = describe_shape_faces(pair.low)[0]
     uv_array = np.array([[0.25, 0.25], [0.75, 0.75]], dtype=np.float64)
 
-    native_surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, uv_array)
-    surface_batch = SurfaceEvalResultBatch.from_native(native_surface_batch)
+    surface_batch = evaluate_shape_single_high_face_samples(pair.high, low_face.face_id, uv_array)
 
-    assert len(surface_batch.results) == 2
-    assert surface_batch.to_numpy_uv_array().shape == (2, 2)
-    assert surface_batch.to_numpy_point_array().shape == (2, 3)
-    assert surface_batch.to_numpy_normal_array().shape == (2, 3)
-    assert surface_batch.to_numpy_normal_defined_mask().shape == (2,)
+    assert len(surface_batch) == 2
+    assert surface_batch.uv.shape == (2, 2)
+    assert surface_batch.point.shape == (2, 3)
+    assert surface_batch.normal.shape == (2, 3)
+    assert surface_batch.normal_defined.shape == (2,)
 
 
-def test_native_ray_mapping_smoke_on_ribbed_pedestal():
+def test_merged_method_arg_routes_to_separate_cpp_impls_on_pedestal():
     pair = pedestal_ribs_pair()
     faces = pair.low.faces()
     side_face_index = None
     for idx, face in enumerate(faces):
-        center = face.center()
-        normal = face.normal_at(center)
-        if abs(normal.Z) < 0.5:
+        if abs(face.normal_at(face.center()).Z) < 0.5:
             side_face_index = idx
             break
-
     assert side_face_index is not None
 
     low_face = describe_shape_faces(pair.low)[side_face_index]
@@ -274,14 +232,15 @@ def test_native_ray_mapping_smoke_on_ribbed_pedestal():
     context = MappingContext()
     context.enable_parallel = True
 
-    batch = map_shape_single_low_face_samples_to_high_faces_ray(
-        pair.low,
-        pair.high,
-        low_face.face_id,
-        samples,
-        context,
-    )
+    nearest = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.nearest, context)
+    ray = map(pair.low, pair.high, low_face.face_id, samples, MappingMethod.ray, context)
 
-    assert len(batch.results) == len(samples)
-    assert [result.index for result in batch.results] == list(range(len(samples)))
-    assert any(_status_name(result.value.status) == "hit" for result in batch.results)
+    assert len(nearest) == len(samples)
+    assert len(ray) == len(samples)
+    assert ray.index.tolist() == list(range(len(samples)))
+
+    # nearest collapses onto the smooth base face; ray reaches the raised ribs.
+    nearest_faces = set(nearest.high_face_id.tolist())
+    ray_faces = set(ray.high_face_id.tolist())
+    assert nearest_faces != ray_faces
+    assert any(ray.status == HIT)
