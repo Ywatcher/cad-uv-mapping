@@ -9,13 +9,7 @@ from . import _native
 from .types import (
     FaceUvSampleGroup,
     FaceUvSampleGroupBatch,
-    FlatUvSample,
-    IndexedFlatUvSample,
-    IndexedMappingResult,
-    IndexedSurfaceEvalResult,
     IndexedUvCoord,
-    MappingResultBatch,
-    SurfaceEvalResultBatch,
     UvCoord,
 )
 
@@ -81,43 +75,3 @@ def normalize_face_uv_samples(samples: Any) -> object:
     - native batch objects
     """
     return FaceUvSampleGroupBatch.from_python(samples)
-
-
-def mapping_batch_to_structured_array(batch: Any) -> np.ndarray:
-    """Convert a mapping batch into a flat structured NumPy array.
-
-    `batch` may be a native `_native.MappingResultBatch` or a wrapper
-    `cad_uv_map.types.MappingResultBatch`.
-    """
-    return MappingResultBatch.from_python(batch).to_numpy_structured_array()
-
-
-def mapping_batch_to_numpy_grid(batch: Any, grid_shape: Sequence[int]) -> np.ndarray:
-    """Convert a mapping batch into a structured grid of high-face ids and UVs.
-
-    `batch` may be a native `_native.MappingResultBatch` or a wrapper
-    `cad_uv_map.types.MappingResultBatch`.
-    """
-    batch = MappingResultBatch.from_python(batch)
-    grid_shape = tuple(grid_shape)
-    dtype = np.dtype(
-        [
-            ("high_face_id", np.int32),
-            ("high_u", np.float64),
-            ("high_v", np.float64),
-        ]
-    )
-    mapped = np.empty(grid_shape, dtype=dtype)
-    for flat_index, result in enumerate(batch.results):
-        row = np.unravel_index(flat_index, grid_shape) if grid_shape else ()
-        value = result.value
-        if hasattr(value, "high_uv"):
-            high_u, high_v = float(value.high_uv.u), float(value.high_uv.v)
-        else:
-            high_u, high_v = float(value.high_u), float(value.high_v)
-        mapped[row] = (
-            int(value.high_face_id),
-            high_u,
-            high_v,
-        )
-    return mapped

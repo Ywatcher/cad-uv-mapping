@@ -1,21 +1,18 @@
+from ._native import MappingContext, MappingMethod, MappingStatus
 from .types import (
     FaceUvSampleGroup,
     FaceUvSampleGroupBatch,
     FlatUvSample,
     IndexedFaceUvSampleGroup,
     IndexedFlatUvSample,
-    IndexedMappingResult,
-    IndexedMappedSampleRecord,
-    IndexedSurfaceEvalResult,
     IndexedUvCoord,
-    MappedSampleBatch,
-    MappedSampleRecord,
-    MappingResult,
-    MappingResultBatch,
-    SurfaceEvalResult,
-    SurfaceEvalResultBatch,
     UvCoord,
     Vec3,
+)
+from .results import (
+    MappedSampleBatch,
+    MappingResultBatch,
+    SurfaceEvalResultBatch,
 )
 
 
@@ -79,12 +76,6 @@ def mapping_batch_to_structured_array(*args, **kwargs):
     return _mapping_batch_to_structured_array(*args, **kwargs)
 
 
-def mapping_batch_to_numpy_grid(*args, **kwargs):
-    from .conversions import mapping_batch_to_numpy_grid as _mapping_batch_to_numpy_grid
-
-    return _mapping_batch_to_numpy_grid(*args, **kwargs)
-
-
 def debug_print_shape_uv_sample_batch(*args, **kwargs):
     from .api import debug_print_shape_uv_sample_batch as _debug_print_shape_uv_sample_batch
 
@@ -121,40 +112,18 @@ def sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs):
     return _sample_shape_face_uniform_uv_tolerance_grid_batch(*args, **kwargs)
 
 
-def map_shape_single_low_face_samples_to_high_faces(*args, **kwargs):
-    from .api import map_shape_single_low_face_samples_to_high_faces as _map_shape_single_low_face_samples_to_high_faces
+def map(*args, **kwargs):
+    """Merged low-to-high mapping; select the method with `method=MappingMethod...`."""
+    from .api import map as _map
 
-    return _map_shape_single_low_face_samples_to_high_faces(*args, **kwargs)
-
-
-def map_shape_single_low_face_samples_to_high_faces_nearest(*args, **kwargs):
-    from .api import map_shape_single_low_face_samples_to_high_faces_nearest as _map_shape_single_low_face_samples_to_high_faces_nearest
-
-    return _map_shape_single_low_face_samples_to_high_faces_nearest(*args, **kwargs)
+    return _map(*args, **kwargs)
 
 
-def map_shape_single_low_face_samples_to_high_faces_ray(*args, **kwargs):
-    from .api import map_shape_single_low_face_samples_to_high_faces_ray as _map_shape_single_low_face_samples_to_high_faces_ray
+def map_grid(*args, **kwargs):
+    """Merged UV-grid mapping; select the method with `method=MappingMethod...`."""
+    from .api import map_grid as _map_grid
 
-    return _map_shape_single_low_face_samples_to_high_faces_ray(*args, **kwargs)
-
-
-def map_shape_single_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs):
-    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid
-
-    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid(*args, **kwargs)
-
-
-def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(*args, **kwargs):
-    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest
-
-    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest(*args, **kwargs)
-
-
-def map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(*args, **kwargs):
-    from .api import map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray as _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray
-
-    return _map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray(*args, **kwargs)
+    return _map_grid(*args, **kwargs)
 
 
 def evaluate_shape_single_high_face_samples(*args, **kwargs):
@@ -176,6 +145,11 @@ def map_and_evaluate_shape_multiple_low_face_samples(*args, **kwargs):
 
 
 __all__ = [
+    # enums / config
+    "MappingContext",
+    "MappingMethod",
+    "MappingStatus",
+    # input-side types
     "UvCoord",
     "Vec3",
     "IndexedUvCoord",
@@ -184,15 +158,11 @@ __all__ = [
     "FaceUvSampleGroup",
     "IndexedFaceUvSampleGroup",
     "FaceUvSampleGroupBatch",
-    "MappingResult",
-    "IndexedMappingResult",
+    # columnar result batches
     "MappingResultBatch",
-    "SurfaceEvalResult",
-    "IndexedSurfaceEvalResult",
     "SurfaceEvalResultBatch",
-    "MappedSampleRecord",
-    "IndexedMappedSampleRecord",
     "MappedSampleBatch",
+    # functions
     "describe_brep_faces",
     "describe_shape_faces",
     "shape_to_brep_bytes",
@@ -203,19 +173,14 @@ __all__ = [
     "to_native_uv_coords",
     "to_native_face_uv_samples",
     "mapping_batch_to_structured_array",
-    "mapping_batch_to_numpy_grid",
     "debug_print_shape_uv_sample_batch",
     "debug_print_shape_uv_samples",
     "sample_shape_face_uniform_uv_grid",
     "sample_shape_face_uniform_uv_grid_batch",
     "sample_shape_face_uniform_uv_tolerance_grid",
     "sample_shape_face_uniform_uv_tolerance_grid_batch",
-    "map_shape_single_low_face_samples_to_high_faces",
-    "map_shape_single_low_face_samples_to_high_faces_nearest",
-    "map_shape_single_low_face_samples_to_high_faces_ray",
-    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid",
-    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid_nearest",
-    "map_shape_single_low_face_uv_grid_to_high_face_uv_grid_ray",
+    "map",
+    "map_grid",
     "evaluate_shape_single_high_face_samples",
     "evaluate_shape_multiple_high_face_samples",
     "map_and_evaluate_shape_multiple_low_face_samples",

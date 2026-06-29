@@ -126,55 +126,26 @@ void print_face_uv_sample_batch(const TopoDS_Shape& shape, const FaceUvSampleGro
 // =============================================================================
 // Public mapping API
 // =============================================================================
-// input: one low face, its face id, low-face UV samples, and candidate high faces
+// input: one low face, its face id, low-face UV samples, candidate high faces, method
 // output: one mapping record per sample, with high face id, high UV, hit point, and distance
-// how: dispatches to the default nearest-face projection implementation
+// how: dispatches to the per-method projection implementation in cpp/src/projection/.
+//      The nearest/ray algorithms remain separate functions; only the selection is merged.
 MappingResultBatch map_single_low_face_samples_to_high_faces(
     const TopoDS_Face& low_face,
     std::int32_t low_face_id,
     const std::vector<UvCoord>& low_uv_samples,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method,
     const MappingContext* shared_context) {
-    return map_single_low_face_samples_to_high_faces_nearest(
-        low_face,
-        low_face_id,
-        low_uv_samples,
-        high_faces,
-        shared_context);
-}
-
-// input: one low face, its face id, low-face UV samples, and candidate high faces
-// output: mapping batch produced by the nearest-face projection path
-// how: forwards to the nearest projection implementation in cpp/src/projection/
-MappingResultBatch map_single_low_face_samples_to_high_faces_nearest(
-    const TopoDS_Face& low_face,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const std::vector<TopoDS_Face>& high_faces,
-    const MappingContext* shared_context) {
-    return detail::map_low_face_samples_to_high_faces_nearest_impl(
-        low_face,
-        low_face_id,
-        low_uv_samples,
-        high_faces,
-        shared_context);
-}
-
-// input: one low face, its face id, low-face UV samples, and candidate high faces
-// output: mapping batch produced by the ray-based projection path
-// how: forwards to the ray projection implementation in cpp/src/projection/
-MappingResultBatch map_single_low_face_samples_to_high_faces_ray(
-    const TopoDS_Face& low_face,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const std::vector<TopoDS_Face>& high_faces,
-    const MappingContext* shared_context) {
-    return detail::map_low_face_samples_to_high_faces_ray_impl(
-        low_face,
-        low_face_id,
-        low_uv_samples,
-        high_faces,
-        shared_context);
+    switch (method) {
+        case MappingMethod::ray:
+            return detail::map_low_face_samples_to_high_faces_ray_impl(
+                low_face, low_face_id, low_uv_samples, high_faces, shared_context);
+        case MappingMethod::nearest:
+        default:
+            return detail::map_low_face_samples_to_high_faces_nearest_impl(
+                low_face, low_face_id, low_uv_samples, high_faces, shared_context);
+    }
 }
 
 // =============================================================================
@@ -208,31 +179,16 @@ SurfaceEvalResultBatch evaluate_single_high_face_samples(
     return batch;
 }
 
-// input: low-face BREP bytes, high-face BREP bytes, low face id, and low-face UV samples
+// input: low/high BREP bytes, low face id, low-face UV samples, projection method
 // output: mapping batch for the selected low face
-// how: reads both shapes from BREP, extracts faces, validates the low face id, then maps
+// how: reads both shapes from BREP, extracts faces, validates the low face id, then
+//      dispatches to the projection method via the single-face entry point
 MappingResultBatch map_brep_single_low_face_samples_to_high_faces(
     const std::string& low_brep_data,
     const std::string& high_brep_data,
     std::int32_t low_face_id,
     const std::vector<UvCoord>& low_uv_samples,
-    const MappingContext* shared_context) {
-    return map_brep_single_low_face_samples_to_high_faces_nearest(
-        low_brep_data,
-        high_brep_data,
-        low_face_id,
-        low_uv_samples,
-        shared_context);
-}
-
-// input: low-face BREP bytes, high-face BREP bytes, low face id, and low-face UV samples
-// output: mapping batch from the nearest projection path
-// how: same BREP loading path as the generic wrapper, then calls the nearest projection API
-MappingResultBatch map_brep_single_low_face_samples_to_high_faces_nearest(
-    const std::string& low_brep_data,
-    const std::string& high_brep_data,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
+    MappingMethod method,
     const MappingContext* shared_context) {
     const TopoDS_Shape low_shape = read_brep_bytes(low_brep_data);
     const TopoDS_Shape high_shape = read_brep_bytes(high_brep_data);
@@ -248,32 +204,7 @@ MappingResultBatch map_brep_single_low_face_samples_to_high_faces_nearest(
         low_face_id,
         low_uv_samples,
         high_faces,
-        shared_context);
-}
-
-// input: low-face BREP bytes, high-face BREP bytes, low face id, and low-face UV samples
-// output: mapping batch from the ray projection path
-// how: same BREP loading path as the generic wrapper, then calls the ray projection API
-MappingResultBatch map_brep_single_low_face_samples_to_high_faces_ray(
-    const std::string& low_brep_data,
-    const std::string& high_brep_data,
-    std::int32_t low_face_id,
-    const std::vector<UvCoord>& low_uv_samples,
-    const MappingContext* shared_context) {
-    const TopoDS_Shape low_shape = read_brep_bytes(low_brep_data);
-    const TopoDS_Shape high_shape = read_brep_bytes(high_brep_data);
-    const std::vector<TopoDS_Face> low_faces = collect_faces(low_shape);
-    const std::vector<TopoDS_Face> high_faces = collect_faces(high_shape);
-
-    if (low_face_id < 0 || low_face_id >= static_cast<std::int32_t>(low_faces.size())) {
-        throw std::out_of_range("low_face_id is outside the low face list");
-    }
-
-    return map_single_low_face_samples_to_high_faces_ray(
-        low_faces[static_cast<std::size_t>(low_face_id)],
-        low_face_id,
-        low_uv_samples,
-        high_faces,
+        method,
         shared_context);
 }
 
@@ -284,6 +215,7 @@ MappingResultBatch map_multiple_low_face_sample_groups_to_high_faces(
     const FaceUvSampleGroupBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method,
     const MappingContext* shared_context) {
     std::vector<MappingResultBatch> group_batches(low_face_samples.faces.size());
     const bool use_parallel = shared_context != nullptr && shared_context->enable_parallel && low_face_samples.faces.size() > 1;
@@ -307,6 +239,7 @@ MappingResultBatch map_multiple_low_face_sample_groups_to_high_faces(
             group.face_id,
             local_uvs,
             high_faces,
+            method,
             shared_context);
 
         group_batches[group_index] = std::move(group_batch);
@@ -477,6 +410,7 @@ MappedSampleBatch map_and_evaluate_multiple_low_face_samples(
     const FaceUvSampleGroupBatch& low_face_samples,
     const std::vector<TopoDS_Face>& low_faces,
     const std::vector<TopoDS_Face>& high_faces,
+    MappingMethod method,
     const MappingContext* shared_context) {
     MappedSampleBatch batch;
 
@@ -484,6 +418,7 @@ MappedSampleBatch map_and_evaluate_multiple_low_face_samples(
         low_face_samples,
         low_faces,
         high_faces,
+        method,
         shared_context);
     const SurfaceEvalResultBatch surface = evaluate_multiple_high_face_samples(mapping, high_faces, shared_context);
 

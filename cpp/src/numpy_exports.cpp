@@ -49,6 +49,12 @@ pybind11::array_t<double> to_numpy_vec3_array(const std::vector<Vec3>& values) {
     });
 }
 
+pybind11::array_t<double> to_numpy_double_array(const std::vector<double>& values) {
+    return make_array_1d<double>(values.size(), [&](std::size_t row) {
+        return values[row];
+    });
+}
+
 pybind11::array_t<std::int64_t> to_numpy_index_array(const std::vector<std::size_t>& values) {
     return make_array_1d<std::int64_t>(values.size(), [&](std::size_t row) {
         return static_cast<std::int64_t>(values[row]);
