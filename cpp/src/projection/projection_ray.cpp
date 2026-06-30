@@ -22,7 +22,10 @@ bool find_best_ray_hit_allow_zero(
     bool has_best = false;
     *ambiguous = false;
 
+    const gp_Lin line(origin, direction);
     for (std::int32_t hfi = 0; hfi < static_cast<std::int32_t>(intersectors.size()); ++hfi) {
+        if (!intersectors[static_cast<std::size_t>(hfi)].CanRayReach(line)) continue;
+
         try {
             const ProjectionCandidate candidate = project_ray_to_face_allow_zero(
                 origin, direction, hfi, intersectors[static_cast<std::size_t>(hfi)], tolerance);
@@ -65,7 +68,10 @@ MappingResult map_low_face_sample_to_high_faces_ray(
         std::numeric_limits<double>::infinity(),
     };
 
+    const gp_Lin line(origin, direction);
     for (std::int32_t hfi = 0; hfi < static_cast<std::int32_t>(intersectors.size()); ++hfi) {
+        if (!intersectors[static_cast<std::size_t>(hfi)].CanRayReach(line)) continue;
+
         try {
             const ProjectionCandidate candidate = project_ray_to_face(
                 origin, direction, hfi, intersectors[static_cast<std::size_t>(hfi)], tolerance);

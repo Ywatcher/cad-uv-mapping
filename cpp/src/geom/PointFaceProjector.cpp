@@ -2,6 +2,7 @@
 
 #include <BRep_Tool.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
+#include <GeomAbs_Shape.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom2d_Curve.hxx>
 #include <Precision.hxx>
@@ -44,6 +45,26 @@ void PointFaceProjector::Load(const TopoDS_Face& face, double tolerance) {
 
     build_mesh();
     build_boundary();
+
+    // Build bbox from the grid points already computed in build_mesh().
+    // Avoids BRepBndLib which may trigger OCCT triangulation internally.
+    for (const gp_Pnt& p : points_)
+        bbox_.Add(p);
+}
+
+// ---------------------------------------------------------------------------
+// CanReach
+// ---------------------------------------------------------------------------
+
+bool PointFaceProjector::CanReach(const gp_Pnt& query, double max_dist) const {
+    if (bbox_.IsVoid()) return true;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    bbox_.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    // Distance from query to nearest point on the box (zero if inside).
+    const double dx = std::max({xmin - query.X(), 0.0, query.X() - xmax});
+    const double dy = std::max({ymin - query.Y(), 0.0, query.Y() - ymax});
+    const double dz = std::max({zmin - query.Z(), 0.0, query.Z() - zmax});
+    return dx * dx + dy * dy + dz * dz <= max_dist * max_dist;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,16 +72,20 @@ void PointFaceProjector::Load(const TopoDS_Face& face, double tolerance) {
 // ---------------------------------------------------------------------------
 
 std::pair<int, int> PointFaceProjector::mesh_resolution() const {
-    // TODO: make adaptive. Replace this body with:
-    //
-    //   const int nu = std::max(8, adaptor_.NbUIntervals(GeomAbs_C1) * 4);
-    //   const int nv = std::max(8, adaptor_.NbVIntervals(GeomAbs_C1) * 4);
-    //   return {nu, nv};
-    //
-    // Denser grids give find_candidates() more starting seeds per knot span,
-    // reducing the risk of Newton converging to a local instead of global
-    // minimum on concave or multiply-covered surfaces.
-    return {20, 20};
+    return mesh_resolution_adaptive();
+}
+
+std::pair<int, int> PointFaceProjector::mesh_resolution_adaptive() const {
+    // 4 cells per C1-continuous knot span so every span is sampled at least
+    // once, giving Newton seeds dense enough to reach the global nearest point.
+    // Minimum of 8 keeps cost low for simple (plane/cylinder) faces.
+    const int nu = std::max(8, adaptor_.NbUIntervals(GeomAbs_C1) * 4);
+    const int nv = std::max(8, adaptor_.NbVIntervals(GeomAbs_C1) * 4);
+    return {nu, nv};
+}
+
+std::pair<int, int> PointFaceProjector::mesh_resolution_fixed(int nu, int nv) {
+    return {nu, nv};
 }
 
 // ---------------------------------------------------------------------------

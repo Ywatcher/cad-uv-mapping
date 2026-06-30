@@ -5,7 +5,7 @@
 #include "projection/mapping_projection.hpp"
 
 #include <BRepAdaptor_Surface.hxx>
-#include <BRepLProp_SLProps.hxx>
+#include <Precision.hxx>
 #include <algorithm>
 #include <cmath>
 #include <future>
@@ -37,34 +37,33 @@ SurfaceEvalResult make_no_surface_eval_result(std::int32_t face_id, const UvCoor
     };
 }
 
-// take one sample on a high_face, identified by (high_face, high_face_id, uv)
-// and turn it into actual surface data
+// Evaluates one UV sample using a pre-built adaptor that is reused across calls.
+// Normal is computed as Su × Sv, avoiding BRepLProp_SLProps which requires a
+// non-const adaptor reference and cannot be shared across samples or threads.
 SurfaceEvalResult evaluate_high_face_sample(
-    const TopoDS_Face& high_face,
+    BRepAdaptor_Surface& adaptor,
+    bool reversed,
     std::int32_t high_face_id,
-    const UvCoord& uv,
-    double tolerance) {
+    const UvCoord& uv) {
     try {
-        BRepAdaptor_Surface high_surface(high_face);
-        const gp_Pnt point = high_surface.Value(uv.u, uv.v);
-        BRepLProp_SLProps props(high_surface, uv.u, uv.v, 1, tolerance);
+        gp_Pnt P; gp_Vec Su, Sv;
+        adaptor.D1(uv.u, uv.v, P, Su, Sv);
 
-        if (!props.IsNormalDefined()) {
+        const gp_Vec n = Su.Crossed(Sv);
+        if (n.Magnitude() < Precision::Confusion()) {
             SurfaceEvalResult result = make_no_surface_eval_result(high_face_id, uv);
-            result.point = Vec3{point.X(), point.Y(), point.Z()};
+            result.point = Vec3{P.X(), P.Y(), P.Z()};
             return result;
         }
 
-        gp_Dir normal = props.Normal();
-        if (high_face.Orientation() == TopAbs_REVERSED) {
-            normal.Reverse();
-        }
+        gp_Dir dir(n);
+        if (reversed) dir.Reverse();
 
         return SurfaceEvalResult{
             high_face_id,
             uv,
-            Vec3{point.X(), point.Y(), point.Z()},
-            Vec3{normal.X(), normal.Y(), normal.Z()},
+            Vec3{P.X(), P.Y(), P.Z()},
+            Vec3{dir.X(), dir.Y(), dir.Z()},
             true,
         };
     } catch (const std::exception&) {
@@ -167,15 +166,21 @@ SurfaceEvalResultBatch evaluate_single_high_face_samples(
     SurfaceEvalResultBatch batch;
     batch.results.resize(high_uv_samples.size());
 
-    const double tolerance = detail::mapping_tolerance(shared_context);
+    // One adaptor for the entire group. evaluate_multiple_high_face_samples
+    // routes each high_face_id to exactly one thread, so this adaptor is
+    // private to the calling thread. BSpline caches initialize on first D1()
+    // and are reused for all subsequent samples — no per-sample reconstruction.
+    BRepAdaptor_Surface adaptor(high_face);
+    const bool reversed = (high_face.Orientation() == TopAbs_REVERSED);
+
     for (std::size_t sample_index = 0; sample_index < high_uv_samples.size(); ++sample_index) {
         batch.results[sample_index] = IndexedSurfaceEvalResult{
             sample_index,
             evaluate_high_face_sample(
-                high_face,
+                adaptor,
+                reversed,
                 high_face_id,
-                high_uv_samples[sample_index],
-                tolerance),
+                high_uv_samples[sample_index]),
         };
     }
 

@@ -2,6 +2,7 @@
 
 #include "SurfaceAdaptor.hpp"
 
+#include <Bnd_Box.hxx>
 #include <TopoDS_Face.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Pnt.hxx>
@@ -42,11 +43,10 @@ struct RayResult {
 //
 // Improvement roadmap (each item is a single-method replacement):
 //
-//   1. Adaptive mesh  (mesh_resolution)
-//      Currently fixed 20×20. Query adaptor_.NbUIntervals(GeomAbs_C1) and
-//      NbVIntervals(GeomAbs_C1) and return {n_u * 4, n_v * 4} (min 8 each).
-//      This matches OCCT's sampling strategy and prevents missed hits on
-//      surfaces with many knot spans.
+//   1. Mesh resolution  (mesh_resolution)  ✓ DONE
+//      Two strategies exposed: mesh_resolution_adaptive() scales with the
+//      surface's knot structure; mesh_resolution_fixed(nu, nv) uses a
+//      constant grid. Active strategy selected in mesh_resolution().
 //
 //   2. Analytic dispatch  (try_analytic)
 //      Currently returns nullopt. Add cases for GeomAbs_Plane (one equation),
@@ -74,6 +74,12 @@ public:
     // Thread-safe: const, returns by value, touches no mutable state.
     RayResult Perform(const gp_Lin& line, double pmin, double pmax) const;
 
+    // Returns false if the infinite line cannot intersect this face's
+    // pre-built axis-aligned bounding box (slab test).
+    // Use as a cheap O(1) guard before calling Perform().
+    // Thread-safe: const, reads only the pre-built bbox.
+    bool CanRayReach(const gp_Lin& line) const;
+
 private:
     struct MeshTri {
         int i0, i1, i2;  // indices into points_
@@ -83,9 +89,20 @@ private:
     };
 
     // --- Extension point 1: mesh resolution ---------------------------------
-    // Returns {nu, nv} grid dimensions used by build_mesh().
-    // Currently fixed. See roadmap item 1 above for the adaptive version.
+    // mesh_resolution() is the active policy called by build_mesh().
+    // To switch strategies, change the single line that delegates below.
     std::pair<int, int> mesh_resolution() const;
+
+    // Adaptive: 4 cells per C1-continuous BSpline knot span, minimum 8 per
+    // direction. Guarantees every span is sampled at least once so the
+    // Möller–Trumbore seed covers the whole face regardless of knot density.
+    // Scales with surface complexity; use when accuracy matters.
+    std::pair<int, int> mesh_resolution_adaptive() const;
+
+    // Fixed: uniform nu × nv grid regardless of surface type.
+    // Predictable cost; use when the face type is simple (plane/cylinder)
+    // or when you want reproducible timing independent of knot structure.
+    static std::pair<int, int> mesh_resolution_fixed(int nu = 20, int nv = 20);
 
     void build_mesh();
     void build_boundary();
@@ -132,6 +149,9 @@ private:
 
     // 2D boundary polygon, one entry per wire, ordered PCurve sample points.
     std::vector<std::vector<gp_Pnt2d>> boundary_wires_;
+
+    // Pre-built axis-aligned bounding box. Set in Load(), read in CanRayReach().
+    Bnd_Box bbox_;
 };
 
 } // namespace cad_uv_map::geom

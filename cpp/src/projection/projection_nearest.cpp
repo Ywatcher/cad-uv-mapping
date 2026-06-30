@@ -22,6 +22,7 @@ MappingResult map_low_face_sample_to_high_faces_nearest(
 
     bool has_best = false;
     bool ambiguous = false;
+    double best_dist = std::numeric_limits<double>::infinity();
     ProjectionCandidate best{
         -1,
         std::numeric_limits<double>::quiet_NaN(),
@@ -31,6 +32,11 @@ MappingResult map_low_face_sample_to_high_faces_nearest(
     };
 
     for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(projectors.size()); ++high_face_id) {
+        // Bbox cull: once we have a best at distance D, any face whose nearest
+        // bbox point is farther than D + tolerance cannot improve it.
+        if (!projectors[static_cast<std::size_t>(high_face_id)].CanReach(low_point, best_dist + tolerance))
+            continue;
+
         try {
             const ProjectionCandidate candidate = project_point_to_face(
                 low_point,
@@ -41,6 +47,7 @@ MappingResult map_low_face_sample_to_high_faces_nearest(
             if (!has_best || candidate.distance < best.distance - tolerance) {
                 best = candidate;
                 has_best = true;
+                best_dist = best.distance;
                 ambiguous = false;
             } else if (std::abs(candidate.distance - best.distance) <= tolerance) {
                 ambiguous = true;

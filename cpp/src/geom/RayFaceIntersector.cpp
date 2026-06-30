@@ -2,6 +2,7 @@
 
 #include <BRep_Tool.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
+#include <GeomAbs_Shape.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom2d_Curve.hxx>
 #include <Precision.hxx>
@@ -58,6 +59,49 @@ void RayFaceIntersector::Load(const TopoDS_Face& face, double tolerance) {
 
     build_mesh();
     build_boundary();
+
+    // Build bbox from the grid points already computed in build_mesh().
+    // Avoids BRepBndLib which may trigger OCCT triangulation internally.
+    for (const gp_Pnt& p : points_)
+        bbox_.Add(p);
+}
+
+// ---------------------------------------------------------------------------
+// CanRayReach
+// ---------------------------------------------------------------------------
+
+bool RayFaceIntersector::CanRayReach(const gp_Lin& line) const {
+    if (bbox_.IsVoid()) return true;
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    bbox_.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+
+    const gp_Dir& dir = line.Direction();
+    const gp_Pnt& orig = line.Location();
+    const double dx = dir.X(), dy = dir.Y(), dz = dir.Z();
+    const double ox = orig.X(), oy = orig.Y(), oz = orig.Z();
+
+    double tmin = -std::numeric_limits<double>::max();
+    double tmax =  std::numeric_limits<double>::max();
+
+    if (std::abs(dx) > 1e-12) {
+        double t1 = (xmin - ox) / dx, t2 = (xmax - ox) / dx;
+        if (t1 > t2) std::swap(t1, t2);
+        tmin = std::max(tmin, t1); tmax = std::min(tmax, t2);
+    } else if (ox < xmin || ox > xmax) return false;
+
+    if (std::abs(dy) > 1e-12) {
+        double t1 = (ymin - oy) / dy, t2 = (ymax - oy) / dy;
+        if (t1 > t2) std::swap(t1, t2);
+        tmin = std::max(tmin, t1); tmax = std::min(tmax, t2);
+    } else if (oy < ymin || oy > ymax) return false;
+
+    if (std::abs(dz) > 1e-12) {
+        double t1 = (zmin - oz) / dz, t2 = (zmax - oz) / dz;
+        if (t1 > t2) std::swap(t1, t2);
+        tmin = std::max(tmin, t1); tmax = std::min(tmax, t2);
+    } else if (oz < zmin || oz > zmax) return false;
+
+    return tmin <= tmax;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,20 +109,20 @@ void RayFaceIntersector::Load(const TopoDS_Face& face, double tolerance) {
 // ---------------------------------------------------------------------------
 
 std::pair<int, int> RayFaceIntersector::mesh_resolution() const {
-    // TODO: make adaptive. Replace this body with:
-    //
-    //   const int nu = std::max(8, adaptor_.NbUIntervals(GeomAbs_C1) * 4);
-    //   const int nv = std::max(8, adaptor_.NbVIntervals(GeomAbs_C1) * 4);
-    //   return {nu, nv};
-    //
-    // NbUIntervals(GeomAbs_C1) returns the number of parameter intervals on
-    // which the surface is C1-continuous (i.e. the number of knot spans for a
-    // BSpline). Using 4 cells per span guarantees that each knot span contains
-    // at least 4 triangles, preventing missed hits on tightly-splined surfaces.
-    // This mirrors OCCT's own sampling strategy in BRepTopAdaptor_TopolTool.
-    //
-    // No other code needs to change: build_mesh() already calls this method.
-    return {20, 20};
+    return mesh_resolution_adaptive();
+}
+
+std::pair<int, int> RayFaceIntersector::mesh_resolution_adaptive() const {
+    // 4 cells per C1-continuous knot span so every span is sampled at least
+    // once, giving Möller–Trumbore seeds that cover the whole face regardless
+    // of knot density. Minimum of 8 for simple (plane/cylinder) faces.
+    const int nu = std::max(8, adaptor_.NbUIntervals(GeomAbs_C1) * 4);
+    const int nv = std::max(8, adaptor_.NbVIntervals(GeomAbs_C1) * 4);
+    return {nu, nv};
+}
+
+std::pair<int, int> RayFaceIntersector::mesh_resolution_fixed(int nu, int nv) {
+    return {nu, nv};
 }
 
 // ---------------------------------------------------------------------------

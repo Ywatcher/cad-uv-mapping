@@ -1,23 +1,28 @@
 #pragma once
 
 #include <BRepAdaptor_Surface.hxx>
+#include <GeomAbs_Shape.hxx>
 #include <TopAbs_Orientation.hxx>
 #include <TopoDS_Face.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
 
+#include <memory>
+#include <mutex>
+
 namespace cad_uv_map::geom {
 
 // Thread-safe surface evaluator for a TopoDS_Face.
 //
-// Load() deep-copies the face's underlying geometry so each SurfaceAdaptor
-// holds private OCCT objects with no shared mutable state. Multiple instances
-// loaded from the same TopoDS_Face handle can therefore evaluate concurrently
-// without racing on OCCT's lazy Bezier-segment cache.
+// Load() deep-copies the face geometry and pre-warms the BSpline span cache.
+// After Load(), Value/D0/D1 are safe to call from any number of concurrent
+// threads on the SAME instance: a per-instance mutex serialises access to
+// GeomAdaptor_Surface::mySurfaceCache (a single-entry mutable field that
+// stores Bezier data for the most-recently-evaluated knot span).
 //
-// Method names match BRepAdaptor_Surface for familiarity. Each instance must
-// be used from one thread at a time; thread-safety comes from having one
-// instance per thread, not from locking inside these methods.
+// For performance: give each parallel worker its OWN SurfaceAdaptor so
+// threads access independent caches with no mutex contention at all.
+// The shared-instance path is correct but serialises cache writes.
 class SurfaceAdaptor {
 public:
     // Deep-copy face geometry into private storage.
@@ -35,9 +40,21 @@ public:
     double FirstVParameter() const;
     double LastVParameter()  const;
 
+    // Number of parameter intervals on which the surface is C<n>-continuous.
+    // For a BSpline surface this equals the number of knot spans.
+    // Needed by mesh_resolution() to guarantee every span is pre-warmed.
+    int NbUIntervals(GeomAbs_Shape continuity) const;
+    int NbVIntervals(GeomAbs_Shape continuity) const;
+
 private:
     TopoDS_Face         private_face_;
     BRepAdaptor_Surface adaptor_;
+
+    // Serialises concurrent Value/D0/D1 calls to protect the single-entry
+    // BSplSLib_Cache stored inside GeomAdaptor_Surface (mySurfaceCache).
+    // unique_ptr keeps SurfaceAdaptor moveable for std::vector compatibility.
+    mutable std::unique_ptr<std::mutex> cache_mutex_ =
+        std::make_unique<std::mutex>();
 };
 
 } // namespace cad_uv_map::geom

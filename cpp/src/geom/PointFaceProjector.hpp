@@ -2,6 +2,7 @@
 
 #include "SurfaceAdaptor.hpp"
 
+#include <Bnd_Box.hxx>
 #include <TopoDS_Face.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
@@ -39,8 +40,10 @@ struct PointResult {
 //
 // Improvement roadmap (each item is a single-method replacement):
 //
-//   1. Adaptive mesh  (mesh_resolution)
-//      Same as RayFaceIntersector: query NbUIntervals(GeomAbs_C1) × 4.
+//   1. Mesh resolution  (mesh_resolution)  ✓ DONE
+//      Two strategies exposed: mesh_resolution_adaptive() scales with the
+//      surface's knot structure; mesh_resolution_fixed(nu, nv) uses a
+//      constant grid. Active strategy selected in mesh_resolution().
 //
 //   2. Analytic dispatch  (try_analytic)
 //      GeomAbs_Plane   — project via normal, one dot product.
@@ -64,9 +67,28 @@ public:
     // Thread-safe: const, touches no mutable state.
     PointResult Perform(const gp_Pnt& query) const;
 
+    // Returns false if every point on this face is farther than max_dist from
+    // query — computed from the face's pre-built axis-aligned bounding box.
+    // Use as a cheap O(1) guard before calling Perform().
+    // Thread-safe: const, reads only the pre-built bbox.
+    bool CanReach(const gp_Pnt& query, double max_dist) const;
+
 private:
     // --- Extension point 1: mesh resolution ---------------------------------
+    // mesh_resolution() is the active policy called by build_mesh().
+    // To switch strategies, change the single line that delegates below.
     std::pair<int, int> mesh_resolution() const;
+
+    // Adaptive: 4 cells per C1-continuous BSpline knot span, minimum 8 per
+    // direction. Guarantees every span is sampled at least once so the Newton
+    // seeds are dense enough to converge to the global nearest point.
+    // Scales with surface complexity; use when accuracy matters.
+    std::pair<int, int> mesh_resolution_adaptive() const;
+
+    // Fixed: uniform nu × nv grid regardless of surface type.
+    // Predictable cost; use when the face type is simple (plane/cylinder)
+    // or when you want reproducible timing independent of knot structure.
+    static std::pair<int, int> mesh_resolution_fixed(int nu = 20, int nv = 20);
 
     void build_mesh();
     void build_boundary();
@@ -99,6 +121,9 @@ private:
     int npu_{}, npv_{};
 
     std::vector<std::vector<gp_Pnt2d>> boundary_wires_;
+
+    // Pre-built axis-aligned bounding box. Set in Load(), read in CanReach().
+    Bnd_Box bbox_;
 };
 
 } // namespace cad_uv_map::geom
