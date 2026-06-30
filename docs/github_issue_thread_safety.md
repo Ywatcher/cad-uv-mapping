@@ -253,40 +253,204 @@ share memory with the kernel's address space.
 
 ---
 
-## POST 3 — fix (add after implementation is complete)
+## POST 3 — fix
 
-### Fix: [brief description of chosen plan]
+### Fix: replace OCCT-based intersection with thread-safe custom implementations
 
-<!--
-Fill in after implementing. Template:
+---
+
+### Diagnosis recap
+
+The root cause (detailed in the previous comment) is that OCCT's custom memory
+allocator `Standard_MMgrOptl` uses per-size free-lists without thread locks.
+When two workers call `new IntCurvesFace_Intersector(...)` at the same moment
+they corrupt each other's free-list, producing the `trap invalid opcode` crash.
+
+This was confirmed by a diagnostic mutex experiment: wrapping only the OCCT
+constructor call (not our face-copy call) in a `static std::mutex` eliminated
+the crash, while making the program 5× slower (all ray intersections serialised
+globally). Because the mutex covered suspect 2 but not suspect 1, and the crash
+disappeared, suspect 2 is definitively the race site. `BRepBuilderAPI_Copy` is
+not involved.
+
+A global mutex is not an acceptable fix — the 22-minute test run vs. the normal
+4-minute run shows what it costs. The real fix is to ensure OCCT's allocator is
+never called from more than one thread at a time.
+
+---
+
+### Design principle
+
+The key insight is that all allocation can be moved into a serial setup phase:
+
+```
+serial (before workers launch):
+    for each high face:
+        deep-copy the face geometry       ← one BRepBuilderAPI_Copy per face
+        evaluate surface on a UV grid     ← pre-warms all BSpline Bezier caches
+        sample all boundary PCurves       ← pre-warms all 2D curve caches
+        store results in std::vector      ← no OCCT Handle retained
+
+parallel (workers running):
+    read std::vector data                 ← pure reads, no allocation
+    evaluate D0/D1 on pre-warmed surface  ← guaranteed cache hit, pure read
+    run geometric algorithm               ← arithmetic only
+```
+
+After the serial phase, every object is read-only. Reading the same memory from
+multiple threads simultaneously is always safe — a race requires at least one
+writer. Both new classes declare `Perform()` as `const` and return results by
+value with no output parameters, so the compiler enforces this invariant.
+
+**Why pre-warming matters:**
+OCCT's BSpline evaluator writes a Bezier conversion cache the first time any
+knot span is evaluated. Evaluating the full UV grid during serial `Load()` fills
+every cache entry before workers start, making all subsequent `D1()` calls in
+the parallel phase guaranteed cache hits — pure reads, no writes.
+
+---
 
 ### What was changed
 
-- Added `PreparedFace` struct in `cpp/src/projection/prepared_face.hpp`:
-  extracts poles, knots, and trim data from a `TopoDS_Face` into plain
-  C++ arrays that carry no shared OCCT handles.
-- Added `prepare_face(TopoDS_Face)` function called once per face in serial,
-  before the `std::async` loop.
-- Replaced `IntCurvesFace_ShapeIntersector` calls with `intersect_ray(PreparedFace)`
-  which operates only on the extracted plain data.
-- Applied the same change to `projection_nearest.cpp`.
+**New class: `geom::RayFaceIntersector`**
+(`cpp/src/geom/RayFaceIntersector.hpp` / `.cpp`)
+
+Replaces `IntCurvesFace_ShapeIntersector` for the `ray` and `ray_bidirectional`
+methods. Four-phase algorithm, each phase in its own method so future improvements
+replace one method without touching the rest:
+
+1. **`try_analytic()`** — stub; future: closed-form dispatch for planes and
+   cylinders, bypassing the mesh entirely for the most common surface types.
+2. **`find_candidates()`** — coarse AABB slab test against per-triangle bounding
+   boxes; returns triangle indices whose box the ray cannot be ruled out of
+   hitting. Currently O(n) linear scan; future: BVH for O(log n).
+3. **Möller–Trumbore** — exact ray-triangle test; returns barycentric coordinates
+   that interpolate an approximate `(u_approx, v_approx)` on the true surface.
+4. **`refine()`** — 2D Newton iteration on the true surface: projects the 3D
+   residual into the plane perpendicular to the ray, solves a 2×2 linear system
+   at each step. Converges to tolerance precision in 5–10 iterations regardless
+   of mesh resolution. Uses `SurfaceAdaptor::D1()`.
+5. **`inside_face()`** — even-odd crossing-number test on a pre-built 2D polygon
+   per wire; handles holes correctly without distinguishing outer from inner
+   wires.
+
+**New class: `geom::PointFaceProjector`**
+(`cpp/src/geom/PointFaceProjector.hpp` / `.cpp`)
+
+Replaces `BRepExtrema_DistShapeShape` for the `nearest` method. Same design:
+`Load()` in serial, `Perform() const` returns by value.
+
+Algorithm:
+1. **`find_candidates()`** — scans the UV grid, returns K=8 nearest 3D grid
+   points to the query as Newton seeds.
+2. **`refine_nearest()`** — Gauss-Newton minimisation of `|S(u,v) − P|²`:
+
+   ```
+   J^T J · [Δu, Δv]^T = −J^T r
+
+   where J = [Su, Sv],  r = S(u,v) − P
+   so    J^T J = [[Su·Su, Su·Sv], [Su·Sv, Sv·Sv]]  (Gram matrix)
+         J^T r = [Su·(S−P), Sv·(S−P)]
+   ```
+
+   UV coordinates come directly from Newton — no `ShapeAnalysis_Surface`
+   inversion call needed, unlike `BRepExtrema_DistShapeShape`.
+3. **`inside_face()`** — same even-odd test as `RayFaceIntersector`.
+
+**Modified: `cpp/src/projection/projection_ray.cpp`**
+
+Added `make_face_intersectors()` helper. Both `_ray_impl` and
+`_ray_bidirectional_impl` now call it in serial before `std::async`:
+
+```cpp
+// Serial — all OCCT allocation happens here
+const std::vector<geom::RayFaceIntersector> face_intersectors =
+    make_face_intersectors(high_faces, tolerance);
+
+// Parallel — Perform() is const, returns by value, no allocation
+futures.push_back(std::async(std::launch::async, [&, begin, end, wi]() {
+    for (std::size_t i = begin; i < end; ++i)
+        map_sample(worker_adaptors[wi], i);   // uses face_intersectors
+}));
+```
+
+**Modified: `cpp/src/projection/projection_nearest.cpp`**
+
+Same pattern: added `make_face_projectors()` helper called in serial.
+
+**Modified: `cpp/src/projection/mapping_projection.hpp` / `.cpp`**
+
+`project_point_to_face` now takes `const geom::PointFaceProjector&` instead of
+`const TopoDS_Face&`. `project_ray_to_face*` already took
+`const geom::RayFaceIntersector&`.
+
+---
 
 ### Why this is safe
 
-Each `PreparedFace` is owned by the caller and read-only after construction.
-No OCCT handles are accessed during the parallel phase. Two threads may call
-`intersect_ray()` on different `PreparedFace` objects simultaneously with no
-shared state.
+Each `RayFaceIntersector` and `PointFaceProjector` is owned by a
+`std::vector` in the serial setup scope and never moved or resized after workers
+launch. Workers hold const references to elements of that vector.
+
+`RayFaceIntersector::Perform()` and `PointFaceProjector::Perform()` are both
+declared `const` and return results by value. They call:
+
+- `find_candidates()` / `find_best_*()` — reads `std::vector<double>` (read-only after Load)
+- `moller_trumbore()` / `refine_nearest()` — reads `std::vector<gp_Pnt>` (read-only)
+- `adaptor_.D1()` — reads the private deep-copied surface via `BRepAdaptor_Surface::D1()`,
+  which is a pure read after Bezier caches are warmed
+- `inside_face()` — reads `std::vector<std::vector<gp_Pnt2d>>` (read-only)
+
+No OCCT `Handle` is constructed in `Perform()`. No `Standard::Allocate` is called.
+The `BRepAdaptor_Surface` member evaluates the pre-warmed BSpline cache, which is
+a read of an `NCollection_Array1` allocated once during `Load()`.
+
+---
+
+### Known limitations
+
+The current implementation has four known gaps relative to OCCT's own
+`IntCurvesFace_Intersector`. None affect thread safety; all affect coverage
+or performance on specific surface types. Each gap corresponds to a named
+private method with a detailed TODO comment:
+
+| Gap | Impact | Extension point |
+|---|---|---|
+| Fixed 20×20 mesh | Missed hits on surfaces with many BSpline knot spans | `mesh_resolution()` |
+| No analytic dispatch | Unnecessary grid work on planes and cylinders | `try_analytic()` |
+| Linear candidate scan | O(n) instead of O(log n); fine for 20×20, slow if adaptive | `find_candidates()` |
+| Sampled boundary polygon | May misclassify UV points very close to trimming curves | `inside_face()` |
+
+See `docs/ray_face_intersector.md` for the full improvement roadmap with
+specific replacement code for each item.
+
+---
 
 ### Test results
 
-- 17 existing tests: pass
-- Crash regression (`test_crash_regression_ray_bidirectional_pedestal_nofold`): pass
-- Correctness (parallel == serial, 6 cases): pass
-- Stress (200 iterations × 3 methods): pass
-- ThreadSanitizer run: no data race reports from cad_uv_map code
+The thread-safety test suite (`tests/python/test_thread_safety.py`) runs each
+projection method 200 times in parallel:
+
+| Configuration | Result | Time |
+|---|---|---|
+| Baseline — no fix | crash (SIGILL) | — |
+| Diagnostic mutex (OCCT constructor serialised) | 14 passed | 22:36 |
+| `RayFaceIntersector` (ray + ray\_bidirectional) | 14 passed | 4:39 |
+| + `PointFaceProjector` (nearest) | 14 passed | 4:32 |
+
+The 22-minute mutex run demonstrates both that the mutex fixed the crash and
+that a global lock is 5× slower than the pre-build pattern. The final 4-minute
+run recovers full parallelism with no crashes across all three methods.
+
+Existing correctness tests (single-threaded): 14 passed, no regressions.
+
+**ThreadSanitizer** has not been run — `clang++` is not installed on the build
+machine. The diagnostic mutex experiment gives high confidence that the race
+is fixed. TSan support is already wired into `CMakeLists.txt`
+(`-DENABLE_TSAN=ON`) and can be used when `clang++` is available.
+
+---
 
 ### Commit
 
-[link to commit]
--->
+`7069feb` — Replace OCCT-based projection with thread-safe custom implementations
