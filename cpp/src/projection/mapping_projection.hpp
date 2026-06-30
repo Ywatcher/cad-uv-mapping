@@ -1,8 +1,10 @@
 #pragma once
 
 #include "cad_uv_map/mapping.hpp"
+#include "../geom/PointFaceProjector.hpp"
+#include "../geom/RayFaceIntersector.hpp"
+#include "../geom/SurfaceAdaptor.hpp"
 
-#include <BRepAdaptor_Surface.hxx>
 #include <TopoDS_Face.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
@@ -39,12 +41,11 @@ std::size_t mapping_worker_count(std::size_t sample_count, const MappingContext*
 ProjectionCandidate project_point_to_face(
     const gp_Pnt& point,
     std::int32_t high_face_id,
-    const TopoDS_Face& high_face,
+    const geom::PointFaceProjector& projector,
     double tolerance);
 
 bool build_low_face_ray(
-    const BRepAdaptor_Surface& low_surface,
-    const TopoDS_Face& low_face,
+    const geom::SurfaceAdaptor& adaptor,
     const UvCoord& uv,
     double tolerance,
     gp_Pnt* origin,
@@ -54,7 +55,14 @@ ProjectionCandidate project_ray_to_face(
     const gp_Pnt& origin,
     const gp_Dir& direction,
     std::int32_t high_face_id,
-    const TopoDS_Face& high_face,
+    const geom::RayFaceIntersector& intersector,
+    double tolerance);
+
+ProjectionCandidate project_ray_to_face_allow_zero(
+    const gp_Pnt& origin,
+    const gp_Dir& direction,
+    std::int32_t high_face_id,
+    const geom::RayFaceIntersector& intersector,
     double tolerance);
 
 MappingResult make_no_hit_result(std::int32_t low_face_id, const UvCoord& uv);
@@ -80,6 +88,13 @@ MappingResultBatch map_low_face_samples_to_high_faces_nearest_impl(
     const MappingContext* shared_context);
 
 MappingResultBatch map_low_face_samples_to_high_faces_ray_impl(
+    const TopoDS_Face& low_face,
+    std::int32_t low_face_id,
+    const std::vector<UvCoord>& low_uv_samples,
+    const std::vector<TopoDS_Face>& high_faces,
+    const MappingContext* shared_context);
+
+MappingResultBatch map_low_face_samples_to_high_faces_ray_bidirectional_impl(
     const TopoDS_Face& low_face,
     std::int32_t low_face_id,
     const std::vector<UvCoord>& low_uv_samples,

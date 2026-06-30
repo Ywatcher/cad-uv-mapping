@@ -304,9 +304,10 @@ def map_source_samples_to_target(
     """Map UV samples on one source face to target faces, using the selected method.
 
     `method` selects the projection strategy (`MappingMethod.nearest`, the
-    default, or `MappingMethod.ray`). `source_uv_samples` may be a Python sequence,
-    a NumPy UV array, or any native UV sample container accepted by
-    `to_native_uv_coords`. Returns a columnar `MappingResultBatch`.
+    default, `MappingMethod.ray`, or `MappingMethod.ray_bidirectional`).
+    `source_uv_samples` may be a Python sequence, a NumPy UV array, or any
+    native UV sample container accepted by `to_native_uv_coords`. Returns a
+    columnar `MappingResultBatch`.
     """
     if method is None:
         method = _native.MappingMethod.nearest

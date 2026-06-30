@@ -281,7 +281,8 @@ PYBIND11_MODULE(_native, m) {
 
     py::enum_<cad_uv_map::MappingMethod>(m, "MappingMethod")
         .value("nearest", cad_uv_map::MappingMethod::nearest)
-        .value("ray", cad_uv_map::MappingMethod::ray);
+        .value("ray", cad_uv_map::MappingMethod::ray)
+        .value("ray_bidirectional", cad_uv_map::MappingMethod::ray_bidirectional);
 
     // Output batches expose a single columnar accessor `columns()` returning a
     // dict of name -> NumPy array (struct-of-arrays). Per-record and Indexed*

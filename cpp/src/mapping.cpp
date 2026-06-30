@@ -138,6 +138,9 @@ MappingResultBatch map_single_low_face_samples_to_high_faces(
     MappingMethod method,
     const MappingContext* shared_context) {
     switch (method) {
+        case MappingMethod::ray_bidirectional:
+            return detail::map_low_face_samples_to_high_faces_ray_bidirectional_impl(
+                low_face, low_face_id, low_uv_samples, high_faces, shared_context);
         case MappingMethod::ray:
             return detail::map_low_face_samples_to_high_faces_ray_impl(
                 low_face, low_face_id, low_uv_samples, high_faces, shared_context);

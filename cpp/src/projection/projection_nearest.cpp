@@ -1,5 +1,8 @@
 #include "mapping_projection.hpp"
 
+#include "../geom/PointFaceProjector.hpp"
+#include "../geom/SurfaceAdaptor.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <future>
@@ -10,12 +13,12 @@ namespace cad_uv_map::detail {
 namespace {
 
 MappingResult map_low_face_sample_to_high_faces_nearest(
-    const BRepAdaptor_Surface& low_surface,
+    const geom::SurfaceAdaptor& adaptor,
     std::int32_t low_face_id,
     const UvCoord& uv,
-    const std::vector<TopoDS_Face>& high_faces,
+    const std::vector<geom::PointFaceProjector>& projectors,
     double tolerance) {
-    const gp_Pnt low_point = low_surface.Value(uv.u, uv.v);
+    const gp_Pnt low_point = adaptor.Value(uv.u, uv.v);
 
     bool has_best = false;
     bool ambiguous = false;
@@ -27,12 +30,12 @@ MappingResult map_low_face_sample_to_high_faces_nearest(
         std::numeric_limits<double>::infinity(),
     };
 
-    for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(high_faces.size()); ++high_face_id) {
+    for (std::int32_t high_face_id = 0; high_face_id < static_cast<std::int32_t>(projectors.size()); ++high_face_id) {
         try {
             const ProjectionCandidate candidate = project_point_to_face(
                 low_point,
                 high_face_id,
-                high_faces[static_cast<std::size_t>(high_face_id)],
+                projectors[static_cast<std::size_t>(high_face_id)],
                 tolerance);
 
             if (!has_best || candidate.distance < best.distance - tolerance) {
@@ -73,6 +76,15 @@ MappingResult map_low_face_sample_to_high_faces_nearest(
  * This is the nearest-surface implementation used by the public mapping API
  * through the orchestration layer in cpp/src/mapping.cpp.
  */
+static std::vector<geom::PointFaceProjector> make_face_projectors(
+    const std::vector<TopoDS_Face>& high_faces, double tolerance) {
+    std::vector<geom::PointFaceProjector> projectors;
+    projectors.resize(high_faces.size());
+    for (std::size_t i = 0; i < high_faces.size(); ++i)
+        projectors[i].Load(high_faces[i], tolerance);
+    return projectors;
+}
+
 MappingResultBatch map_low_face_samples_to_high_faces_nearest_impl(
     const TopoDS_Face& low_face,
     std::int32_t low_face_id,
@@ -83,43 +95,54 @@ MappingResultBatch map_low_face_samples_to_high_faces_nearest_impl(
     const double tolerance = mapping_tolerance(shared_context);
     batch.results.resize(low_uv_samples.size());
 
-    const std::size_t worker_count = mapping_worker_count(low_uv_samples.size(), shared_context);
+    // Build one projector per high face in serial. After this point all
+    // projectors are read-only: Perform() is const and returns by value, so
+    // workers can call it concurrently with no shared mutable state.
+    const std::vector<geom::PointFaceProjector> projectors =
+        make_face_projectors(high_faces, tolerance);
 
-    auto map_sample = [&](const BRepAdaptor_Surface& low_surface, std::size_t sample_index) {
+    const std::size_t worker_count = mapping_worker_count(low_uv_samples.size(), shared_context);
+    const std::size_t chunk_size = (low_uv_samples.size() + worker_count - 1) / worker_count;
+
+    auto map_sample = [&](const geom::SurfaceAdaptor& adaptor, std::size_t sample_index) {
         batch.results[sample_index] = IndexedMappingResult{
             sample_index,
             map_low_face_sample_to_high_faces_nearest(
-                low_surface,
+                adaptor,
                 low_face_id,
                 low_uv_samples[sample_index],
-                high_faces,
+                projectors,
                 tolerance),
         };
     };
 
     if (worker_count <= 1) {
-        BRepAdaptor_Surface low_surface(low_face);
+        geom::SurfaceAdaptor adaptor;
+        adaptor.Load(low_face);
         for (std::size_t sample_index = 0; sample_index < low_uv_samples.size(); ++sample_index) {
-            map_sample(low_surface, sample_index);
+            map_sample(adaptor, sample_index);
         }
         return batch;
     }
 
-    const std::size_t chunk_size = (low_uv_samples.size() + worker_count - 1) / worker_count;
+    // Create one low-face adaptor per worker in serial so each worker has
+    // private low-face geometry for Value() calls.
+    std::vector<geom::SurfaceAdaptor> worker_adaptors;
+    worker_adaptors.reserve(worker_count);
+    for (std::size_t wi = 0; wi < worker_count && wi * chunk_size < low_uv_samples.size(); ++wi) {
+        worker_adaptors.emplace_back();
+        worker_adaptors.back().Load(low_face);
+    }
+
     std::vector<std::future<void>> futures;
-    futures.reserve(worker_count);
+    futures.reserve(worker_adaptors.size());
 
-    for (std::size_t worker_index = 0; worker_index < worker_count; ++worker_index) {
-        const std::size_t begin = worker_index * chunk_size;
-        if (begin >= low_uv_samples.size()) {
-            break;
-        }
-
+    for (std::size_t wi = 0; wi < worker_adaptors.size(); ++wi) {
+        const std::size_t begin = wi * chunk_size;
         const std::size_t end = std::min(low_uv_samples.size(), begin + chunk_size);
-        futures.push_back(std::async(std::launch::async, [&, begin, end]() {
-            BRepAdaptor_Surface low_surface(low_face);
+        futures.push_back(std::async(std::launch::async, [&, begin, end, wi]() {
             for (std::size_t sample_index = begin; sample_index < end; ++sample_index) {
-                map_sample(low_surface, sample_index);
+                map_sample(worker_adaptors[wi], sample_index);
             }
         }));
     }

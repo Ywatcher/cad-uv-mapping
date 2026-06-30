@@ -24,3 +24,6 @@ wheel.packages = ["python/cad_uv_map"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+markers = [
+    "stress: slow concurrency stress tests — run explicitly with -m stress",
+]

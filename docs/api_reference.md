@@ -140,7 +140,7 @@ Input:
 - `source_shape` and `target_shape`: shape-like inputs or face lists
 - `source_face_id`: the source face id on the source shape
 - `source_uv_samples`: any input accepted by `to_native_uv_coords`
-- `method`: optional `MappingMethod.nearest` or `MappingMethod.ray`
+- `method`: optional `MappingMethod.nearest`, `MappingMethod.ray`, or `MappingMethod.ray_bidirectional`
 - `shared_context`: optional native `MappingContext`
 
 Accepted sample forms:
@@ -229,7 +229,7 @@ Input:
 
 - `source_shape` and `target_shape`: shape-like inputs or face lists
 - `source_face_samples`: grouped sample input accepted by `normalize_face_uv_samples`
-- `method`: optional `MappingMethod.nearest` or `MappingMethod.ray`
+- `method`: optional `MappingMethod.nearest`, `MappingMethod.ray`, or `MappingMethod.ray_bidirectional`
 
 Output:
 

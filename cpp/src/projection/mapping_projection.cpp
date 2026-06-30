@@ -1,12 +1,6 @@
 #include "mapping_projection.hpp"
 
-#include <BRepBuilderAPI_MakeVertex.hxx>
-#include <BRepExtrema_DistShapeShape.hxx>
-#include <BRepLProp_SLProps.hxx>
-#include <BRep_Tool.hxx>
-#include <IntCurvesFace_ShapeIntersector.hxx>
-#include <ShapeAnalysis_Surface.hxx>
-#include <TopAbs.hxx>
+#include <Precision.hxx>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -41,44 +35,41 @@ std::size_t mapping_worker_count(std::size_t sample_count, const MappingContext*
 ProjectionCandidate project_point_to_face(
     const gp_Pnt& point,
     std::int32_t high_face_id,
-    const TopoDS_Face& high_face,
-    double tolerance) {
-    BRepBuilderAPI_MakeVertex vertex_builder(point);
-    BRepExtrema_DistShapeShape distance(vertex_builder.Vertex(), high_face, tolerance);
-    distance.Perform();
+    const geom::PointFaceProjector& projector,
+    double /*tolerance*/) {
+    const geom::PointResult result = projector.Perform(point);
 
-    if (!distance.IsDone() || distance.NbSolution() == 0) {
+    if (!result.done || result.hits.empty()) {
         throw std::runtime_error("no projection solution");
     }
 
-    const gp_Pnt hit_point = distance.PointOnShape2(1);
-    ShapeAnalysis_Surface surface_analysis(BRep_Tool::Surface(high_face));
-    const gp_Pnt2d high_uv = surface_analysis.ValueOfUV(hit_point, tolerance);
-
+    const geom::PointHit& hit = result.hits[0];
     return ProjectionCandidate{
         high_face_id,
-        high_uv.X(),
-        high_uv.Y(),
-        hit_point,
-        distance.Value(),
+        hit.u,
+        hit.v,
+        hit.pt,
+        hit.distance,
     };
 }
 
 bool build_low_face_ray(
-    const BRepAdaptor_Surface& low_surface,
-    const TopoDS_Face& low_face,
+    const geom::SurfaceAdaptor& adaptor,
     const UvCoord& uv,
     double tolerance,
     gp_Pnt* origin,
     gp_Dir* direction) {
-    const gp_Pnt point = low_surface.Value(uv.u, uv.v);
-    BRepLProp_SLProps props(low_surface, uv.u, uv.v, 1, tolerance);
-    if (!props.IsNormalDefined()) {
+    gp_Pnt point;
+    gp_Vec du, dv;
+    adaptor.D1(uv.u, uv.v, point, du, dv);
+
+    const gp_Vec normal_vec = du.Crossed(dv);
+    if (normal_vec.Magnitude() < Precision::Confusion()) {
         return false;
     }
 
-    gp_Dir ray_direction = props.Normal();
-    if (low_face.Orientation() == TopAbs_REVERSED) {
+    gp_Dir ray_direction(normal_vec);
+    if (adaptor.Orientation() == TopAbs_REVERSED) {
         ray_direction.Reverse();
     }
 
@@ -87,17 +78,19 @@ bool build_low_face_ray(
     return true;
 }
 
-ProjectionCandidate project_ray_to_face(
+static ProjectionCandidate project_ray_to_face_impl(
     const gp_Pnt& origin,
     const gp_Dir& direction,
     std::int32_t high_face_id,
-    const TopoDS_Face& high_face,
-    double tolerance) {
-    IntCurvesFace_ShapeIntersector intersector;
-    intersector.Load(high_face, tolerance);
-    intersector.Perform(gp_Lin(origin, direction), -std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
+    const geom::RayFaceIntersector& intersector,
+    double tolerance,
+    double minimum_ray_distance) {
+    const geom::RayResult result = intersector.Perform(
+        gp_Lin(origin, direction),
+        -std::numeric_limits<double>::max(),
+         std::numeric_limits<double>::max());
 
-    if (!intersector.IsDone() || intersector.NbPnt() == 0) {
+    if (!result.done || result.hits.empty()) {
         throw std::runtime_error("no ray intersection");
     }
 
@@ -110,20 +103,12 @@ ProjectionCandidate project_ray_to_face(
         std::numeric_limits<double>::infinity(),
     };
 
-    for (Standard_Integer i = 1; i <= intersector.NbPnt(); ++i) {
-        const double ray_distance = intersector.WParameter(i);
-        if (ray_distance <= tolerance) {
-            continue;
-        }
+    for (const geom::RayHit& hit : result.hits) {
+        if (hit.w < minimum_ray_distance) continue;
 
-        if (!has_best || ray_distance < best.distance - tolerance) {
-            best = ProjectionCandidate{
-                high_face_id,
-                intersector.UParameter(i),
-                intersector.VParameter(i),
-                intersector.Pnt(i),
-                ray_distance,
-            };
+        const double result_distance = std::abs(hit.w) <= tolerance ? 0.0 : hit.w;
+        if (!has_best || result_distance < best.distance - tolerance) {
+            best = ProjectionCandidate{high_face_id, hit.u, hit.v, hit.pt, result_distance};
             has_best = true;
         }
     }
@@ -133,6 +118,24 @@ ProjectionCandidate project_ray_to_face(
     }
 
     return best;
+}
+
+ProjectionCandidate project_ray_to_face(
+    const gp_Pnt& origin,
+    const gp_Dir& direction,
+    std::int32_t high_face_id,
+    const geom::RayFaceIntersector& intersector,
+    double tolerance) {
+    return project_ray_to_face_impl(origin, direction, high_face_id, intersector, tolerance, tolerance);
+}
+
+ProjectionCandidate project_ray_to_face_allow_zero(
+    const gp_Pnt& origin,
+    const gp_Dir& direction,
+    std::int32_t high_face_id,
+    const geom::RayFaceIntersector& intersector,
+    double tolerance) {
+    return project_ray_to_face_impl(origin, direction, high_face_id, intersector, tolerance, -tolerance);
 }
 
 MappingResult make_no_hit_result(std::int32_t low_face_id, const UvCoord& uv) {

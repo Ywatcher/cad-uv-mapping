@@ -52,6 +52,30 @@ def test_native_single_low_face_mapping_identity_box_returns_zero_distance_hits(
     assert np.allclose(batch.distance, 0.0)
 
 
+def test_bidirectional_ray_accepts_direct_identity_hits():
+    pair = identity_box_pair()
+    low_face = describe_shape_faces(pair.low)[0]
+    samples = _sample_uv_grid(low_face, 5, 5)
+    context = MappingContext()
+    context.enable_parallel = True
+
+    batch = map_source_samples_to_target(
+        pair.low,
+        pair.high,
+        low_face.face_id,
+        samples,
+        MappingMethod.ray_bidirectional,
+        context,
+    )
+
+    assert len(batch) == len(samples)
+    assert np.all(batch.status == HIT)
+    assert np.all(batch.low_face_id == low_face.face_id)
+    assert np.all(batch.high_face_id == low_face.face_id)
+    assert np.allclose(batch.high_uv, batch.low_uv)
+    assert np.allclose(batch.distance, 0.0)
+
+
 def test_native_single_low_face_uv_grid_mapping_returns_structured_numpy_grid():
     pair = identity_box_pair()
     low_face = describe_shape_faces(pair.low)[0]
